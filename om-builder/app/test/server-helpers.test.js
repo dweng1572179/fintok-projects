@@ -14,6 +14,8 @@ const {
   ensureWorkspaceBoundary,
   researchPrompt,
   validateResearchRequest,
+  sanitizeResearchSelection,
+  hasTemplate,
   parseFindings,
   hasResearchFindings,
 } = require("../server.js");
@@ -161,11 +163,11 @@ test("writeKeyLine replaces a previously-set key, not just an empty one", () => 
   assert.ok(!after.includes("oldkey000"));
 });
 
-test("researchPrompt embeds the address and the output contract for every type", () => {
-  const addr = "845 S Kenmore Ave, Los Angeles, CA 90005";
-  for (const type of ["property", "comps", "market", "tbd"]) {
-    const p = researchPrompt(type, addr);
-    assert.ok(p.includes(addr), `${type} includes the address`);
+test("researchPrompt self-identifies the subject from the deal docs — no address input", () => {
+  for (const type of ["property", "comps", "market"]) {
+    const p = researchPrompt(type);
+    assert.ok(p.includes("identify the subject property"), `${type} identifies the subject from the docs`);
+    assert.ok(p.includes("does not appear in the documents"), `${type} says so honestly when the address is absent`);
     assert.ok(p.includes(`research/${type}-brief.md`), `${type} names its brief file`);
     assert.ok(p.includes(`research/${type}-findings.json`), `${type} names its findings file`);
     assert.ok(p.includes("## Sources"), `${type} demands a sources section`);
@@ -176,38 +178,42 @@ test("researchPrompt embeds the address and the output contract for every type",
 });
 
 test("researchPrompt per-type content", () => {
-  const addr = "845 S Kenmore Ave, Los Angeles, CA 90005";
-  assert.ok(researchPrompt("property", addr).includes("sale and listing history"));
-  assert.ok(researchPrompt("property", addr).includes("owner of record"));
-  const comps = researchPrompt("comps", addr);
+  assert.ok(researchPrompt("property").includes("sale and listing history"));
+  assert.ok(researchPrompt("property").includes("owner of record"));
+  const comps = researchPrompt("comps");
   assert.ok(comps.includes("$/unit") && comps.includes("$/SF") && comps.includes("cap rate"));
   assert.ok(comps.includes("markdown table"));
-  const market = researchPrompt("market", addr);
+  const market = researchPrompt("market");
   assert.ok(market.includes("Last 30 days"));
   assert.ok(market.includes("vacancy") && market.includes("supply pipeline"));
-  const tbd = researchPrompt("tbd", addr);
+  const tbd = researchPrompt("tbd");
   assert.ok(tbd.includes("[TBD]"));
   assert.ok(tbd.includes("python-pptx"));
+  assert.ok(tbd.includes("property identified in the deck"), "tbd identifies the subject from deck + docs");
 });
 
-test("researchPrompt rejects unknown types and blank addresses", () => {
-  assert.throws(() => researchPrompt("weather", "somewhere"));
-  assert.throws(() => researchPrompt("property", ""));
-  assert.throws(() => researchPrompt("property", "   "));
-  assert.throws(() => researchPrompt("property", undefined));
+test("researchPrompt rejects unknown types", () => {
+  assert.throws(() => researchPrompt("weather"));
+  assert.throws(() => researchPrompt(""));
+  assert.throws(() => researchPrompt(undefined));
 });
 
-test("validateResearchRequest gates type and address", () => {
-  assert.deepStrictEqual(
-    validateResearchRequest({ type: "comps", address: " 1 Main St " }),
-    { ok: true, type: "comps", address: "1 Main St" }
-  );
-  assert.strictEqual(validateResearchRequest({ type: "weather", address: "x" }).ok, false);
-  assert.strictEqual(validateResearchRequest({ type: "property", address: "" }).ok, false);
-  assert.strictEqual(validateResearchRequest({ type: "property" }).ok, false);
+test("validateResearchRequest gates type only — address no longer exists", () => {
+  assert.deepStrictEqual(validateResearchRequest({ type: "comps" }), { ok: true, type: "comps" });
+  assert.deepStrictEqual(validateResearchRequest({ type: "tbd" }), { ok: true, type: "tbd" });
+  assert.strictEqual(validateResearchRequest({ type: "weather" }).ok, false);
   assert.strictEqual(validateResearchRequest({}).ok, false);
   // prototype names must not pass the type check
-  assert.strictEqual(validateResearchRequest({ type: "toString", address: "x" }).ok, false);
+  assert.strictEqual(validateResearchRequest({ type: "toString" }).ok, false);
+});
+
+test("sanitizeResearchSelection keeps valid pre-build types, drops junk, dedupes", () => {
+  assert.deepStrictEqual(sanitizeResearchSelection(["property", "comps", "market"]), ["property", "comps", "market"]);
+  assert.deepStrictEqual(sanitizeResearchSelection(["comps", "comps"]), ["comps"], "dedupes");
+  assert.deepStrictEqual(sanitizeResearchSelection(["tbd"]), [], "tbd is post-build only");
+  assert.deepStrictEqual(sanitizeResearchSelection(["weather", "toString"]), [], "unknown + prototype names dropped");
+  assert.deepStrictEqual(sanitizeResearchSelection("property"), [], "non-array is empty");
+  assert.deepStrictEqual(sanitizeResearchSelection(undefined), []);
 });
 
 test("buildPrompt appends the research bridge only when asked", () => {
@@ -222,6 +228,31 @@ test("buildPrompt appends the research bridge only when asked", () => {
   assert.ok(!without.includes("Sources & Data Notes"));
   const oneArg = buildPrompt("Build my OM");
   assert.ok(!oneArg.includes("Sources & Data Notes"), "single-arg call unchanged");
+});
+
+test("buildPrompt appends the template bridge only when the template zone has files", () => {
+  const withT = buildPrompt("Build my OM", false, true);
+  assert.ok(withT.includes("template/ folder"));
+  assert.ok(withT.includes("template profile"));
+  assert.ok(!withT.includes("Sources & Data Notes"), "no research bridge without research");
+  const both = buildPrompt("Build my OM", true, true);
+  assert.ok(both.includes("template/ folder") && both.includes("Sources & Data Notes"));
+  assert.ok(both.indexOf("template/ folder") < both.indexOf("Sources & Data Notes"), "template bridge precedes research bridge");
+  const neither = buildPrompt("Build my OM", false, false);
+  assert.ok(!neither.includes("template/ folder"));
+});
+
+test("hasTemplate detects files in the template/ subfolder", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omb-template-"));
+  try {
+    assert.strictEqual(hasTemplate(dir), false, "no template/ dir");
+    fs.mkdirSync(path.join(dir, "template"));
+    assert.strictEqual(hasTemplate(dir), false, "empty template/ dir");
+    fs.writeFileSync(path.join(dir, "template", "reference.pptx"), "x");
+    assert.strictEqual(hasTemplate(dir), true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("parseFindings returns the array or null — never throws", () => {
