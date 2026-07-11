@@ -597,12 +597,16 @@
       </div>
       <button id="verifyBtn" class="secondary" style="display:none;">Double-check it (Verify)</button>
       <p id="verifyNote" class="verify-note">Re-checks every number and the design before you trust it.</p>
-      <div id="tbdNote" class="tbd-note">Your deck has [TBD] spots — the tool refuses to invent numbers. Add the missing info to your documents and build again.</div>
+      <div id="tbdNote" class="tbd-note">
+        <span>Your deck has [TBD] spots — the tool refuses to invent numbers. Add the missing info to your documents and build again, or let it research the gaps (uses the address in step 2):</span>
+        <button id="tbdResearchBtn" type="button" class="secondary" disabled>Research the missing info</button>
+        <button id="rebuildBtn" type="button" style="display:none;">Rebuild with research</button>
+      </div>
     </section>
   </main>
 
   <footer>
-    Each build bills your own Anthropic API key — typically a few dollars per OM.
+    Each build bills your own Anthropic API key — typically a few dollars per OM. Research runs bill the same key and show their exact cost when they finish.
   </footer>
 
 <script>
@@ -646,6 +650,8 @@
   var briefs = {}; // type -> {brief, findings, usable}
   var shownBrief = null;
   var currentResearchType = null;
+  var tbdResearchBtn = document.getElementById("tbdResearchBtn");
+  var rebuildBtn = document.getElementById("rebuildBtn");
   var RESEARCH_LABELS = { property: "Property", comps: "Comps", market: "Market", tbd: "TBD hunt" };
 
   function fmtSize(bytes) {
@@ -663,6 +669,8 @@
     // uploading a single document.
     var researchReady = !running && keyPresent && !!addressInput.value.trim();
     researchBtns.forEach(function (b) { b.disabled = !researchReady; });
+    tbdResearchBtn.disabled = !researchReady;
+    rebuildBtn.disabled = running;
   }
   addressInput.addEventListener("input", updateBuildGate);
 
@@ -1045,7 +1053,10 @@
         details: researchDetails,
         errorBox: researchError,
         doneText: "Research finished — the brief is below.",
-        onDone: function () { fetchBrief(currentResearchType); },
+        onDone: function () {
+          fetchBrief(currentResearchType);
+          if (currentResearchType === "tbd") rebuildBtn.style.display = "inline-block";
+        },
       });
     }).catch(function (err) {
       running = false;
@@ -1056,6 +1067,14 @@
   }
   researchBtns.forEach(function (b) {
     b.addEventListener("click", function () { startResearch(b.getAttribute("data-type")); });
+  });
+  tbdResearchBtn.addEventListener("click", function () {
+    if (tbdResearchBtn.disabled) return;
+    startResearch("tbd");
+  });
+  rebuildBtn.addEventListener("click", function () {
+    if (rebuildBtn.disabled) return;
+    startBuild();
   });
 
   function fetchBrief(type) {
