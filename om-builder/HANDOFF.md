@@ -27,9 +27,19 @@ A real deal was run through the exact buyer flow: two large broker OMs in (19 MB
 4. Drop deal docs, optionally type instructions, **Build my OM** (~10–25 min, bills the key), download.
    A tiny sanitized sample deal ships inside at `kit/examples/sample-deal/`.
 
+## Research Suite (added 2026-07-11, branch research-suite)
+
+Three research buttons (Property search / Comp analysis / Market research) plus a TBD-fill loop, all wrapper-side — the vendored kit is still byte-identical. Web research runs on the buyer's own key via the Agent SDK's web search; no new API keys, no new dependencies.
+
+- **Contract:** each run writes `research/<type>-brief.md` (sourced brief, `## Sources` section) + `research/<type>-findings.json` (array of `{field, value, unit, source_url, as_of, confidence}`) into the job dir. Types: `property | comps | market | tbd`.
+- **Build integration:** when any `*-findings.json` exists, the build prompt gains a bridge block — deal docs beat research, every researched figure cited on a final "Sources & Data Notes" slide, `[TBD]` only replaced by high-confidence findings. No findings → prompt byte-identical to before.
+- **Guardrails:** `maxTurns 150`, 20-min abort timer per research run; a failed run deletes only a *malformed* findings file. Real per-run cost (`total_cost_usd` from the SDK result) is shown in the feed.
+- **E2E-proven** (845 S Kenmore Ave, 2026-07-11): 24/30/27 sourced findings across the three runs ($1.20/$1.10/$1.22), 15-slide OM out with Sources & Data Notes slide ($7.85), TBD hunt found APN + zoning + retrofit status at high confidence and honestly left unknowable contact blocks as `[TBD]` ($2.00), rebuild consumed the findings. Conflict rule observed working: research found the old Coldwell listing, deck kept the deal docs' Marcus & Millichap branding.
+- **Docs trail:** `docs/research-suite-design.md` (spec) + `docs/research-suite-plan.md` (plan); 22 unit tests in `app/test/server-helpers.test.js`.
+
 ## Facts you'll want
 
-- **Model:** hardcoded `claude-opus-4-8`. Everything is BYOK — no server, no accounts, no billing infra on our side.
+- **Model:** hardcoded `claude-fable-5` (Ben's call, 2026-07-11 — previously `claude-opus-4-8`). Everything is BYOK — no server, no accounts, no billing infra on our side. Fable caveats for buyers: ~2x Opus per-token pricing, the buyer's Anthropic org must allow 30-day data retention (zero-data-retention orgs get a 400 on every request), and safety classifiers can occasionally refuse a run (surfaces as a normal error; retry or rephrase). If those bite real buyers, dropping back to `claude-opus-4-8` is a one-line change in `agentOptions()`. Fable costs: one research run measured live at $2.54 (same run was $1.20 on Opus — the expected ~2x); builds estimated at $20–30/OM (Ben's estimate off the $7.85 Opus-measured build — no full Fable build has been measured yet). The E2E figures in the Research Suite section above were all measured on Opus 4.8, pre-switch.
 - **Architecture:** `app/server.js` (stdlib Node, binds 127.0.0.1 only) drives the Claude Agent SDK inside a per-job folder; skills live in `workspace/.claude/skills/` (the 3 kit skills + Anthropic's pptx/docx/pdf document skills, all vendored). The agent's environment is sealed — it cannot see the buyer's MCP servers or Claude config (proven by reproduction test).
 - **Security posture:** filename sanitization everywhere, download-route hardening, strict key validation (`sk-ant-` charset), JSON-only POSTs (CSRF guard), key never logged. All from adversarial review with reproduced exploits, then re-verified fixed.
 - **Rebuilding zips:** `cd om-builder && bash build.sh` (macOS; downloads are cached in `downloads/`). Pins: Node v20.18.1, CPython 3.12.8, kit commit + SDK version recorded in each zip's `bundle-manifest.txt`.

@@ -372,6 +372,80 @@
     text-align: center;
   }
 
+  /* ---- research suite ---- */
+  .address-input {
+    width: 100%;
+    font-family: inherit;
+    font-size: 1.05rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: 0.6rem;
+    background: #fffdf9;
+    color: var(--ink);
+    margin-bottom: 1rem;
+  }
+  .address-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .research-actions { display: flex; flex-direction: column; gap: 0.85rem; }
+  .research-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: var(--accent-soft-2);
+    border: 1px solid var(--line);
+    border-radius: 0.8rem;
+    padding: 1rem 1.25rem;
+  }
+  .research-info { flex: 1 1 auto; min-width: 0; }
+  .research-name { font-weight: 800; }
+  .research-desc { color: var(--ink-soft); font-size: 0.92rem; margin-top: 0.15rem; }
+  .research-card button {
+    width: auto;
+    min-width: 6.5rem;
+    margin-top: 0;
+    flex-shrink: 0;
+    font-size: 1rem;
+    min-height: 46px;
+  }
+  .brief-tabs { display: flex; gap: 0.5rem; margin-top: 1.2rem; flex-wrap: wrap; }
+  .brief-tab {
+    width: auto;
+    min-height: 40px;
+    margin-top: 0;
+    padding: 0.45rem 1rem;
+    font-size: 0.95rem;
+    background: #fff;
+    color: var(--accent);
+    border: 2px solid var(--line);
+    box-shadow: none;
+  }
+  .brief-tab.active { border-color: var(--accent); background: var(--accent-soft); }
+  .brief-view {
+    display: none;
+    margin-top: 0.9rem;
+    border: 1px solid var(--line);
+    border-radius: 0.8rem;
+    padding: 1.1rem 1.25rem;
+    background: #fffdf9;
+    font-size: 0.98rem;
+    overflow-x: auto;
+  }
+  .brief-view.show { display: block; }
+  .brief-view h3, .brief-view h4, .brief-view h5 { margin: 1.1rem 0 0.4rem; }
+  .brief-view h3:first-child { margin-top: 0; }
+  .brief-view p { margin: 0.5rem 0; }
+  .brief-view ul { margin: 0.5rem 0; padding-left: 1.4rem; }
+  .brief-view a { color: var(--accent); }
+  .brief-view table { border-collapse: collapse; margin: 0.75rem 0; width: 100%; }
+  .brief-view th, .brief-view td { border: 1px solid var(--line); padding: 0.45rem 0.6rem; text-align: left; font-size: 0.92rem; }
+  .brief-view th { background: var(--accent-soft-2); }
+  .brief-warning {
+    background: var(--bad-bg);
+    color: var(--bad);
+    border-radius: 0.5rem;
+    padding: 0.6rem 0.9rem;
+    font-weight: 600;
+  }
+
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #1c1712;
@@ -392,6 +466,9 @@
     }
     textarea, .key-row input { background: #221c16; color: var(--ink); }
     details { background: #241e17; }
+    .address-input, .brief-view { background: #221c16; color: var(--ink); }
+    .research-card { background: #241e17; }
+    .brief-tab { background: #2a231c; }
     .tbd-note { background: #3a3115; border-color: #6b5a24; color: #f2e9dc; }
     .download-card { background: #241e17; }
     .fine-print code { background: #362d23; }
@@ -458,7 +535,47 @@
     </section>
 
     <section class="panel">
-      <h2><span class="step-num">2</span>Anything it should know? (optional)</h2>
+      <h2><span class="step-num">2</span>Let it research the property <span style="font-weight:400;color:var(--ink-soft);font-size:1rem;">(optional)</span></h2>
+      <p class="helper">Missing comps or market data? Give it the address and it researches the web — every figure comes back with its source. Whatever it finds feeds your build automatically.</p>
+      <input id="addressInput" class="address-input" type="text" placeholder="Property address — e.g. 845 S Kenmore Ave, Los Angeles, CA 90005" aria-label="Property address" />
+      <div class="research-actions">
+        <div class="research-card">
+          <div class="research-info">
+            <div class="research-name">Property search</div>
+            <div class="research-desc">Sale &amp; listing history, unit mix, owner of record, zoning, news mentions.</div>
+          </div>
+          <button type="button" class="research-btn secondary" data-type="property" disabled>Run</button>
+        </div>
+        <div class="research-card">
+          <div class="research-info">
+            <div class="research-name">Comp analysis</div>
+            <div class="research-desc">Recent sale and rent comps nearby — $/unit, $/SF, cap rates, distances.</div>
+          </div>
+          <button type="button" class="research-btn secondary" data-type="comps" disabled>Run</button>
+        </div>
+        <div class="research-card">
+          <div class="research-info">
+            <div class="research-name">Market research</div>
+            <div class="research-desc">Rents, vacancy, demographics, employers, pipeline — plus the last 30 days of local news.</div>
+          </div>
+          <button type="button" class="research-btn secondary" data-type="market" disabled>Run</button>
+        </div>
+      </div>
+      <div id="researchProgress" class="progress">
+        <div id="researchLines"></div>
+        <details>
+          <summary>Show the technical details</summary>
+          <div id="researchDetails"></div>
+        </details>
+      </div>
+      <div id="researchError" class="error-box"></div>
+      <div id="briefTabs" class="brief-tabs"></div>
+      <div id="briefView" class="brief-view"></div>
+      <p class="fine-print">Each research run bills your Anthropic key — typically $2&ndash;4 per run — and shows its exact cost in the feed when it finishes.</p>
+    </section>
+
+    <section class="panel">
+      <h2><span class="step-num">3</span>Anything it should know? (optional)</h2>
       <p class="helper">Say nothing and you&rsquo;ll get a full OM from your documents. Or steer it: name a price, or say &ldquo;in the style of&rdquo; a deck you dropped in.</p>
       <textarea id="promptInput" rows="5" placeholder="Take the Studio Garden Apartment Covina and make it into the template style of the MM Ontario OM" aria-label="Anything it should know? (optional)"></textarea>
       <button id="buildBtn" disabled>Build my OM</button>
@@ -474,18 +591,22 @@
     </section>
 
     <section class="panel">
-      <h2><span class="step-num">3</span>Download</h2>
+      <h2><span class="step-num">4</span>Download</h2>
       <div id="downloads" class="downloads">
         <p class="empty">Your finished deck will land here the moment the build wraps up.</p>
       </div>
       <button id="verifyBtn" class="secondary" style="display:none;">Double-check it (Verify)</button>
       <p id="verifyNote" class="verify-note">Re-checks every number and the design before you trust it.</p>
-      <div id="tbdNote" class="tbd-note">Your deck has [TBD] spots — the tool refuses to invent numbers. Add the missing info to your documents and build again.</div>
+      <div id="tbdNote" class="tbd-note">
+        <span>Your deck has [TBD] spots — the tool refuses to invent numbers. Add the missing info to your documents and build again, or let it research the gaps (uses the address in step 2):</span>
+        <button id="tbdResearchBtn" type="button" class="secondary" disabled>Research the missing info</button>
+        <button id="rebuildBtn" type="button" style="display:none;">Rebuild with research</button>
+      </div>
     </section>
   </main>
 
   <footer>
-    Each build bills your own Anthropic API key — typically a few dollars per OM.
+    Each build bills your own Anthropic API key — typically $20&ndash;30 per OM. Research runs bill the same key — typically $2&ndash;4 each — and show their exact cost when they finish.
   </footer>
 
 <script>
@@ -518,6 +639,20 @@
   var errorBox = document.getElementById("errorBox");
   var downloads = document.getElementById("downloads");
   var tbdNote = document.getElementById("tbdNote");
+  var addressInput = document.getElementById("addressInput");
+  var researchProgress = document.getElementById("researchProgress");
+  var researchLines = document.getElementById("researchLines");
+  var researchDetails = document.getElementById("researchDetails");
+  var researchError = document.getElementById("researchError");
+  var briefTabs = document.getElementById("briefTabs");
+  var briefView = document.getElementById("briefView");
+  var researchBtns = Array.prototype.slice.call(document.querySelectorAll(".research-btn"));
+  var briefs = {}; // type -> {brief, findings, usable}
+  var shownBrief = null;
+  var currentResearchType = null;
+  var tbdResearchBtn = document.getElementById("tbdResearchBtn");
+  var rebuildBtn = document.getElementById("rebuildBtn");
+  var RESEARCH_LABELS = { property: "Property", comps: "Comps", market: "Market", tbd: "TBD hunt" };
 
   function fmtSize(bytes) {
     if (bytes < 1024) return bytes + " B";
@@ -530,7 +665,14 @@
     var ready = !running && keyPresent && uploadedFiles.length > 0;
     buildBtn.disabled = !ready;
     verifyBtn.disabled = running;
+    // Research needs only key + address — a broker can research before
+    // uploading a single document.
+    var researchReady = !running && keyPresent && !!addressInput.value.trim();
+    researchBtns.forEach(function (b) { b.disabled = !researchReady; });
+    tbdResearchBtn.disabled = !researchReady;
+    rebuildBtn.disabled = running;
   }
+  addressInput.addEventListener("input", updateBuildGate);
 
   function collapseKeyPanel() {
     if (keyPanel.style.display === "none") return;
@@ -690,10 +832,10 @@
       "</svg>";
   }
 
-  function addProgressLine(text, spinning, kind) {
+  function addProgressLine(container, text, spinning, kind) {
     // Demote every existing line to the dimmed "past" style so the newest
     // line reads as the one thing happening right now.
-    var existing = progressLines.querySelectorAll(".progress-line");
+    var existing = container.querySelectorAll(".progress-line");
     existing.forEach(function (el) {
       el.classList.add("past");
       el.classList.remove("latest");
@@ -716,14 +858,14 @@
     var span = document.createElement("span");
     span.textContent = text;
     row.appendChild(span);
-    progressLines.appendChild(row);
+    container.appendChild(row);
   }
 
-  function addDetailLine(text) {
+  function addDetailLine(container, text) {
     var row = document.createElement("div");
     row.className = "detail-line";
     row.textContent = text;
-    detailLines.appendChild(row);
+    container.appendChild(row);
   }
 
   function fetchOutputs() {
@@ -787,7 +929,8 @@
     if (sawTBD) tbdNote.classList.add("show");
   }
 
-  function attachProgress() {
+  // opts: { lines, details, errorBox, doneText, onDone }
+  function attachProgress(opts) {
     if (currentSource) currentSource.close();
     var src = new EventSource("/api/progress?job=" + encodeURIComponent(jobId));
     currentSource = src;
@@ -795,29 +938,29 @@
       var data;
       try { data = JSON.parse(evt.data); } catch (e) { return; }
       if (data.kind === "line") {
-        addProgressLine(data.text, true);
+        addProgressLine(opts.lines, data.text, true);
         if (data.text.indexOf("[TBD]") !== -1) sawTBD = true;
       } else if (data.kind === "detail") {
-        addDetailLine(data.text);
+        addDetailLine(opts.details, data.text);
       } else if (data.kind === "error") {
-        errorBox.textContent = data.text;
-        errorBox.classList.add("show");
+        opts.errorBox.textContent = data.text;
+        opts.errorBox.classList.add("show");
         src.close();
         running = false;
         updateBuildGate();
       } else if (data.kind === "done") {
-        addProgressLine("All set — your deck is ready below.", false, "done");
+        addProgressLine(opts.lines, opts.doneText, false, "done");
         src.close();
-        fetchOutputs();
         running = false;
         updateBuildGate();
+        if (opts.onDone) opts.onDone();
       }
     };
     src.onerror = function () {};
   }
 
-  buildBtn.addEventListener("click", function () {
-    if (buildBtn.disabled) return;
+  function startBuild() {
+    if (running || !jobId) return;
     resetProgressUI();
     running = true; // stays true until the SSE feed says done/error
     updateBuildGate();
@@ -830,7 +973,13 @@
       }),
     }).then(function (r) {
       if (!r.ok) throw new Error("build request failed");
-      attachProgress();
+      attachProgress({
+        lines: progressLines,
+        details: detailLines,
+        errorBox: errorBox,
+        doneText: "All set — your deck is ready below.",
+        onDone: fetchOutputs,
+      });
     }).catch(function () {
       // request never started an agent — unlock so the buyer can retry
       running = false;
@@ -838,6 +987,10 @@
       errorBox.textContent = "Couldn't start the build. Please try again.";
       errorBox.classList.add("show");
     });
+  }
+  buildBtn.addEventListener("click", function () {
+    if (buildBtn.disabled) return;
+    startBuild();
   });
 
   verifyBtn.addEventListener("click", function () {
@@ -851,7 +1004,13 @@
       body: JSON.stringify({ job: jobId }),
     }).then(function (r) {
       if (!r.ok) throw new Error("verify request failed");
-      attachProgress();
+      attachProgress({
+        lines: progressLines,
+        details: detailLines,
+        errorBox: errorBox,
+        doneText: "Check finished — details above.",
+        onDone: fetchOutputs,
+      });
     }).catch(function () {
       running = false;
       updateBuildGate();
@@ -859,6 +1018,177 @@
       errorBox.classList.add("show");
     });
   });
+
+  // ---- research suite ----
+  function resetResearchUI() {
+    researchLines.innerHTML = "";
+    researchDetails.innerHTML = "";
+    researchError.classList.remove("show");
+    researchError.textContent = "";
+    researchProgress.classList.add("show");
+  }
+
+  function startResearch(type) {
+    if (running) return;
+    var address = addressInput.value.trim();
+    if (!address) return;
+    resetResearchUI();
+    running = true;
+    currentResearchType = type;
+    updateBuildGate();
+    ensureJob().then(function (id) {
+      return fetch("/api/research", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ job: id, type: type, address: address }),
+      });
+    }).then(function (r) {
+      if (!r.ok) {
+        return r.json().then(function (d) {
+          throw new Error((d && d.error) || "research request failed");
+        });
+      }
+      attachProgress({
+        lines: researchLines,
+        details: researchDetails,
+        errorBox: researchError,
+        doneText: "Research finished — the brief is below.",
+        onDone: function () {
+          fetchBrief(currentResearchType);
+          if (currentResearchType === "tbd") rebuildBtn.style.display = "inline-block";
+        },
+      });
+    }).catch(function (err) {
+      running = false;
+      updateBuildGate();
+      researchError.textContent = (err && err.message) || "Couldn't start the research. Please try again.";
+      researchError.classList.add("show");
+    });
+  }
+  researchBtns.forEach(function (b) {
+    b.addEventListener("click", function () { startResearch(b.getAttribute("data-type")); });
+  });
+  tbdResearchBtn.addEventListener("click", function () {
+    if (tbdResearchBtn.disabled) return;
+    startResearch("tbd");
+  });
+  rebuildBtn.addEventListener("click", function () {
+    if (rebuildBtn.disabled) return;
+    startBuild();
+  });
+
+  function fetchBrief(type) {
+    fetch("/api/research?job=" + encodeURIComponent(jobId) + "&type=" + encodeURIComponent(type))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data || !data.brief) return;
+        briefs[type] = data;
+        showBrief(type);
+      })
+      .catch(function () {});
+  }
+
+  function renderBriefTabs() {
+    briefTabs.innerHTML = "";
+    Object.keys(RESEARCH_LABELS).forEach(function (t) {
+      if (!briefs[t]) return;
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "brief-tab" + (t === shownBrief ? " active" : "");
+      b.textContent = RESEARCH_LABELS[t];
+      b.addEventListener("click", function () { showBrief(t); });
+      briefTabs.appendChild(b);
+    });
+  }
+
+  function showBrief(type) {
+    shownBrief = type;
+    var data = briefs[type];
+    briefView.innerHTML = "";
+    if (data) {
+      if (!data.usable) {
+        var warn = document.createElement("p");
+        warn.className = "brief-warning";
+        warn.textContent = "Heads up: this run's data file couldn't be read, so a build won't use these findings. Re-run this research before building.";
+        briefView.appendChild(warn);
+      }
+      var body = document.createElement("div");
+      body.innerHTML = renderMarkdown(data.brief);
+      briefView.appendChild(body);
+      briefView.classList.add("show");
+    }
+    renderBriefTabs();
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  // Tiny renderer for agent briefs: headings, bold, links, lists, tables,
+  // paragraphs. Input is escaped FIRST so web-sourced text can never become
+  // live HTML; only the tags this function emits exist in the output.
+  function renderMarkdown(md) {
+    var lines = String(md).split(/\r?\n/);
+    var html = [];
+    var listOpen = false;
+    var tableRows = null;
+
+    function inline(s) {
+      s = escapeHtml(s);
+      s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      return s;
+    }
+    function closeList() {
+      if (listOpen) { html.push("</ul>"); listOpen = false; }
+    }
+    function flushTable() {
+      if (!tableRows || !tableRows.length) { tableRows = null; return; }
+      var out = "<table><thead><tr>";
+      tableRows[0].forEach(function (c) { out += "<th>" + inline(c) + "</th>"; });
+      out += "</tr></thead><tbody>";
+      for (var i = 1; i < tableRows.length; i++) {
+        out += "<tr>";
+        tableRows[i].forEach(function (c) { out += "<td>" + inline(c) + "</td>"; });
+        out += "</tr>";
+      }
+      html.push(out + "</tbody></table>");
+      tableRows = null;
+    }
+
+    lines.forEach(function (raw) {
+      var line = raw.replace(/\s+$/, "");
+      if (/^\s*\|.*\|\s*$/.test(line)) {
+        var cells = line.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map(function (c) { return c.trim(); });
+        var isSeparator = cells.every(function (c) { return /^:?-{2,}:?$/.test(c); });
+        if (!isSeparator) {
+          if (!tableRows) tableRows = [];
+          tableRows.push(cells);
+        }
+        return;
+      }
+      flushTable();
+      var h = /^(#{1,3})\s+(.*)$/.exec(line);
+      if (h) {
+        closeList();
+        var level = h[1].length + 2; // # -> h3 inside the panel
+        html.push("<h" + level + ">" + inline(h[2]) + "</h" + level + ">");
+        return;
+      }
+      var li = /^[-*]\s+(.*)$/.exec(line);
+      if (li) {
+        if (!listOpen) { html.push("<ul>"); listOpen = true; }
+        html.push("<li>" + inline(li[1]) + "</li>");
+        return;
+      }
+      if (!line.trim()) { closeList(); return; }
+      closeList();
+      html.push("<p>" + inline(line) + "</p>");
+    });
+    flushTable();
+    closeList();
+    return html.join("");
+  }
 })();
 </script>
 </body>

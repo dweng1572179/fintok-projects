@@ -2,6 +2,8 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const path = require("node:path");
+const fs = require("node:fs");
+const os = require("node:os");
 const {
   parseEnvFile,
   writeKeyLine,
@@ -10,6 +12,10 @@ const {
   safeName,
   agentOptions,
   ensureWorkspaceBoundary,
+  researchPrompt,
+  validateResearchRequest,
+  parseFindings,
+  hasResearchFindings,
 } = require("../server.js");
 
 test("parseEnvFile reads the key line, ignores comments/blanks", () => {
@@ -153,4 +159,107 @@ test("writeKeyLine replaces a previously-set key, not just an empty one", () => 
   const after = writeKeyLine(before, "sk-ant-newkey111");
   assert.ok(after.includes("ANTHROPIC_API_KEY=sk-ant-newkey111"));
   assert.ok(!after.includes("oldkey000"));
+});
+
+test("researchPrompt embeds the address and the output contract for every type", () => {
+  const addr = "845 S Kenmore Ave, Los Angeles, CA 90005";
+  for (const type of ["property", "comps", "market", "tbd"]) {
+    const p = researchPrompt(type, addr);
+    assert.ok(p.includes(addr), `${type} includes the address`);
+    assert.ok(p.includes(`research/${type}-brief.md`), `${type} names its brief file`);
+    assert.ok(p.includes(`research/${type}-findings.json`), `${type} names its findings file`);
+    assert.ok(p.includes("## Sources"), `${type} demands a sources section`);
+    assert.ok(p.includes('"confidence"'), `${type} demands confidence ratings`);
+    assert.ok(p.includes("never state a figure without a source URL"), `${type} carries the honesty rule`);
+    assert.ok(p.includes("do not rely on memory"), `${type} forbids from-memory facts`);
+  }
+});
+
+test("researchPrompt per-type content", () => {
+  const addr = "845 S Kenmore Ave, Los Angeles, CA 90005";
+  assert.ok(researchPrompt("property", addr).includes("sale and listing history"));
+  assert.ok(researchPrompt("property", addr).includes("owner of record"));
+  const comps = researchPrompt("comps", addr);
+  assert.ok(comps.includes("$/unit") && comps.includes("$/SF") && comps.includes("cap rate"));
+  assert.ok(comps.includes("markdown table"));
+  const market = researchPrompt("market", addr);
+  assert.ok(market.includes("Last 30 days"));
+  assert.ok(market.includes("vacancy") && market.includes("supply pipeline"));
+  const tbd = researchPrompt("tbd", addr);
+  assert.ok(tbd.includes("[TBD]"));
+  assert.ok(tbd.includes("python-pptx"));
+});
+
+test("researchPrompt rejects unknown types and blank addresses", () => {
+  assert.throws(() => researchPrompt("weather", "somewhere"));
+  assert.throws(() => researchPrompt("property", ""));
+  assert.throws(() => researchPrompt("property", "   "));
+  assert.throws(() => researchPrompt("property", undefined));
+});
+
+test("validateResearchRequest gates type and address", () => {
+  assert.deepStrictEqual(
+    validateResearchRequest({ type: "comps", address: " 1 Main St " }),
+    { ok: true, type: "comps", address: "1 Main St" }
+  );
+  assert.strictEqual(validateResearchRequest({ type: "weather", address: "x" }).ok, false);
+  assert.strictEqual(validateResearchRequest({ type: "property", address: "" }).ok, false);
+  assert.strictEqual(validateResearchRequest({ type: "property" }).ok, false);
+  assert.strictEqual(validateResearchRequest({}).ok, false);
+  // prototype names must not pass the type check
+  assert.strictEqual(validateResearchRequest({ type: "toString", address: "x" }).ok, false);
+});
+
+test("buildPrompt appends the research bridge only when asked", () => {
+  const withR = buildPrompt("Build my OM", true);
+  assert.ok(withR.includes("research/ folder"));
+  assert.ok(withR.includes("deal documents always win"));
+  assert.ok(withR.includes("Sources & Data Notes"));
+  assert.ok(withR.includes("confidence is high"));
+  assert.ok(withR.startsWith("Build my OM"), "buyer text still leads");
+  assert.ok(withR.includes("[TBD] marker, never a guess"), "guardrails still present");
+  const without = buildPrompt("Build my OM", false);
+  assert.ok(!without.includes("Sources & Data Notes"));
+  const oneArg = buildPrompt("Build my OM");
+  assert.ok(!oneArg.includes("Sources & Data Notes"), "single-arg call unchanged");
+});
+
+test("parseFindings returns the array or null — never throws", () => {
+  assert.deepStrictEqual(parseFindings('[{"field":"vacancy","value":4.2}]'), [{ field: "vacancy", value: 4.2 }]);
+  assert.deepStrictEqual(parseFindings("[]"), []);
+  assert.strictEqual(parseFindings("{not json"), null);
+  assert.strictEqual(parseFindings('{"field":"x"}'), null, "an object is not a findings array");
+  assert.strictEqual(parseFindings('"hello"'), null);
+  assert.strictEqual(parseFindings(""), null);
+});
+
+test("hasResearchFindings detects findings files and nothing else", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omb-research-"));
+  try {
+    assert.strictEqual(hasResearchFindings(dir), false, "no research/ dir");
+    fs.mkdirSync(path.join(dir, "research"));
+    assert.strictEqual(hasResearchFindings(dir), false, "empty research/ dir");
+    fs.writeFileSync(path.join(dir, "research", "market-brief.md"), "# brief");
+    assert.strictEqual(hasResearchFindings(dir), false, "a brief alone is not findings");
+    fs.writeFileSync(path.join(dir, "research", "market-findings.json"), "[]");
+    assert.strictEqual(hasResearchFindings(dir), true, "one findings file is enough");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("hasResearchFindings ignores a findings file that doesn't parse", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omb-research-"));
+  try {
+    fs.mkdirSync(path.join(dir, "research"));
+    // A run that SUCCEEDS but writes garbage leaves this behind — runResearch
+    // only cleans up malformed files after a failed run. The build bridge must
+    // not switch on for it.
+    fs.writeFileSync(path.join(dir, "research", "comps-findings.json"), "[{trunca");
+    assert.strictEqual(hasResearchFindings(dir), false, "malformed findings are not findings");
+    fs.writeFileSync(path.join(dir, "research", "market-findings.json"), '[{"field":"vacancy"}]');
+    assert.strictEqual(hasResearchFindings(dir), true, "one good file alongside a bad one still counts");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

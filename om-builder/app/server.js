@@ -46,12 +46,126 @@ const VERIFY_PROMPT =
 // zero typing required. Same guardrail block applies either way.
 const DEFAULT_BUILD_INSTRUCTION = "Build an offering memorandum from the documents in the current folder.";
 
+// Appended to the build prompt ONLY when research findings exist in the job
+// dir. Deal docs beat web research; researched figures are always cited; a
+// [TBD] only falls to a high-confidence finding. (Spec: build integration.)
+const RESEARCH_BRIDGE =
+  "\n\nResearch briefs exist in the research/ folder (research/*-brief.md with matching *-findings.json). " +
+  "Use them to fill gaps the deal documents don't cover — the deal documents always win when they conflict. " +
+  "Every researched figure used in the deck must be cited: add a final 'Sources & Data Notes' slide listing " +
+  "each researched figure, its source, and its as-of date. Only replace a [TBD] with a researched figure whose " +
+  "confidence is high; otherwise keep the [TBD].";
+
 // The buyer's freeform text, verbatim, followed by the standing guardrails.
 // Blank/missing input falls back to DEFAULT_BUILD_INSTRUCTION — the prompt
 // panel is optional, not required.
-function buildPrompt(userText) {
+function buildPrompt(userText, withResearch) {
   const text = String(userText || "").trim();
-  return (text || DEFAULT_BUILD_INSTRUCTION) + BUILD_GUARDRAILS;
+  return (text || DEFAULT_BUILD_INSTRUCTION) + BUILD_GUARDRAILS + (withResearch ? RESEARCH_BRIDGE : "");
+}
+
+// ---- research suite (spec: docs/research-suite-design.md) ----
+// Web research on the buyer's own key. Output contract: exactly two files in
+// research/, one human brief + one structured findings file the build bridge
+// consumes. The honesty rules mirror the kit's [TBD] discipline.
+function researchContract(type) {
+  return (
+    "\n\nWrite your results as exactly two files inside a research/ folder in the current directory:\n" +
+    `1. research/${type}-brief.md — a readable brief for a commercial real-estate broker. End it with a '## Sources' section listing every source you used as a markdown link, each with the date the information is from.\n` +
+    `2. research/${type}-findings.json — a JSON array where each element is {"field": string, "value": string or number, "unit": string, "source_url": string, "as_of": string, "confidence": "high"|"medium"|"low"}.\n` +
+    "Rules: never state a figure without a source URL; label estimates as estimates; if you cannot find something, say so plainly in the brief instead of approximating. " +
+    "Use web search for all facts about this specific property and market — do not rely on memory for them."
+  );
+}
+
+const RESEARCH_TYPES = {
+  property: {
+    intro: "Researching the property…",
+    prompt: (address) =>
+      `Research the property at ${address} using web search. Find: sale and listing history with dates and ` +
+      "prices, unit mix and building size, year built, owner of record where public, zoning, and any news " +
+      "mentions of the property.",
+  },
+  comps: {
+    intro: "Finding comparable sales and rents…",
+    prompt: (address) =>
+      `Research comparables for the subject property at ${address} using web search: recent comparable sales ` +
+      "and rent comps in the same submarket. For each comp give the address, sale or listing date, price, " +
+      "$/unit, $/SF, cap rate where reported, and approximate distance from the subject. Present the comps as " +
+      "a markdown table in the brief, followed by a short narrative of what they suggest about the subject.",
+  },
+  market: {
+    intro: "Researching the market…",
+    prompt: (address) =>
+      `Research the submarket around ${address} using web search. Cover the fundamentals: asking rents and ` +
+      "rent trends, vacancy, demographics (population and incomes), major employers, and the supply pipeline " +
+      "(projects under construction or proposed). Then add a '## Last 30 days' section covering recent news " +
+      "relevant to this submarket — transactions, openings and closures, policy changes, anything a broker " +
+      "writing an OM should know happened recently.",
+  },
+  tbd: {
+    intro: "Hunting down the deck's missing numbers…",
+    prompt: (address) =>
+      `The current folder contains a built .pptx offering memorandum for the property at ${address}, plus the ` +
+      "deal documents it was built from. First open the deck (python-pptx is available) and list every [TBD] " +
+      "marker with the slide it sits on and what value it stands in for. Then research JUST those missing " +
+      "items using web search. In the brief, give one section per [TBD] with what you found, or a plain " +
+      "statement that it could not be found.",
+  },
+};
+
+function researchPrompt(type, address) {
+  const def = Object.prototype.hasOwnProperty.call(RESEARCH_TYPES, type) ? RESEARCH_TYPES[type] : null;
+  if (!def) throw new Error(`unknown research type: ${type}`);
+  const addr = String(address || "").trim();
+  if (!addr) throw new Error("address required");
+  return def.prompt(addr) + researchContract(type);
+}
+
+// Pure request gate for POST /api/research — factored out so the 400 paths
+// are unit-testable without a live server (same pattern as isValidKeyPrefix).
+function validateResearchRequest(body) {
+  const type = String((body && body.type) || "");
+  if (!Object.prototype.hasOwnProperty.call(RESEARCH_TYPES, type)) return { ok: false, error: "unknown research type" };
+  const address = String((body && body.address) || "").trim();
+  if (!address) return { ok: false, error: "enter the property address first" };
+  return { ok: true, type, address };
+}
+
+// A findings file is only trustworthy if it parses to a JSON array. Anything
+// else — truncated write from an aborted run, an object, prose — returns null
+// so callers treat the file as absent.
+function parseFindings(text) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  return Array.isArray(data) ? data : null;
+}
+
+// The build bridge switches on this: any *-findings.json under research/ that
+// actually PARSES means a build should be told to use the research. A run that
+// succeeded but wrote garbage leaves a file on disk that runResearch() won't
+// clean up (it only deletes malformed files after a FAILED run) — reading it
+// here keeps that file from silently switching the bridge on.
+function hasResearchFindings(jobDir) {
+  const dir = path.join(jobDir, "research");
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return false; // no research/ dir — the common case
+  }
+  return names.some((f) => {
+    if (!f.endsWith("-findings.json")) return false;
+    try {
+      return parseFindings(fs.readFileSync(path.join(dir, f), "utf8")) !== null;
+    } catch {
+      return false;
+    }
+  });
 }
 
 // Replaces (or inserts) the ANTHROPIC_API_KEY= line in the bundle-root env
@@ -135,7 +249,11 @@ function readKey() {
 function agentOptions(jobDir) {
   return {
     cwd: jobDir,
-    model: "claude-opus-4-8",
+    // Fable 5 by Ben's call (2026-07-11): Anthropic's most capable model.
+    // Caveats vs Opus 4.8: ~2x per-token price, buyer's org must allow
+    // 30-day data retention (ZDR orgs 400 on every request), and safety
+    // classifiers can occasionally refuse — surfaced as a normal run error.
+    model: "claude-fable-5",
     settingSources: ["project"],
     skills: "all",
     permissionMode: "bypassPermissions",
@@ -167,17 +285,23 @@ function describeToolUse(name, input) {
   if (name === "Bash" && /extract_pdf_photos/.test(input?.command || "")) return "Pulling property photos from your PDF…";
   if (name === "Write" || name === "Edit") return "Building the deck…";
   if (name === "Read") return "Reading your documents…";
+  if (name === "WebSearch") return `Searching the web: ${String(input?.query || "").slice(0, 80)}…`;
+  if (name === "WebFetch") return "Reading a source page…";
   return null;
 }
 
-// Runs one or more sequential agent phases in the same job dir with the same
-// options. `phases` is an array of { intro?: string, prompt: string }. Build
-// and Verify are each a single phase today; the machinery stays multi-phase
-// (with abort-on-error) so chained flows remain cheap to add.
+// Runs one or more sequential agent phases in the same job dir. `phases` is
+// an array of { intro?: string, prompt: string, options?: object } — options
+// defaults to the sealed agentOptions(jobDir); research passes an override
+// with maxTurns + an abort timer. Returns true when every phase succeeded.
 async function runAgent(jobId, phases) {
   const job = jobs.get(jobId);
   const jobDir = path.join(JOBS, jobId);
   job.running = true;
+  // Each run owns the progress feed: without this, a new EventSource replay
+  // (see /api/progress) would prepend every PREVIOUS run's events to this
+  // run's log.
+  job.events = [];
   let failed = false;
   try {
     const { query } = await import("@anthropic-ai/claude-agent-sdk");
@@ -186,7 +310,7 @@ async function runAgent(jobId, phases) {
       // agentOptions() carries the environment seal: the agent sees only the
       // bundle's skills — no MCP servers or external settings from the
       // buyer's machine.
-      const q = query({ prompt: phase.prompt, options: agentOptions(jobDir) });
+      const q = query({ prompt: phase.prompt, options: phase.options || agentOptions(jobDir) });
       for await (const msg of q) {
         if (msg.type === "assistant") {
           for (const block of msg.message?.content || []) {
@@ -201,6 +325,9 @@ async function runAgent(jobId, phases) {
           if (msg.is_error) {
             emit(job, "error", msg.result || "The build hit an error.");
             failed = true;
+          } else if (typeof msg.total_cost_usd === "number" && msg.total_cost_usd > 0) {
+            // Real cost from the SDK — the only honest number we can show.
+            emit(job, "line", `That run billed about $${msg.total_cost_usd.toFixed(2)} to your key.`);
           }
         }
       }
@@ -209,8 +336,39 @@ async function runAgent(jobId, phases) {
     if (!failed) emit(job, "done", "Done.");
   } catch (err) {
     emit(job, "error", `Something went wrong: ${err.message}`);
+    failed = true;
   } finally {
     job.running = false;
+  }
+  return !failed;
+}
+
+// Research guardrails: generous enough for a real multi-search pass, tight
+// enough to stop a runaway before it burns the buyer's key for an hour.
+const RESEARCH_MAX_TURNS = 150;
+const RESEARCH_TIMEOUT_MS = 20 * 60 * 1000;
+
+async function runResearch(jobId, type, address) {
+  const jobDir = path.join(JOBS, jobId);
+  fs.mkdirSync(path.join(jobDir, "research"), { recursive: true });
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), RESEARCH_TIMEOUT_MS);
+  const def = RESEARCH_TYPES[type];
+  const options = { ...agentOptions(jobDir), maxTurns: RESEARCH_MAX_TURNS, abortController: ac };
+  let ok = false;
+  try {
+    ok = await runAgent(jobId, [{ intro: def.intro, prompt: researchPrompt(type, address), options }]);
+  } finally {
+    clearTimeout(timer);
+    if (!ok) {
+      // A failed/aborted run must not leave a half-written findings file for
+      // a later build to trust. Only a MALFORMED file is deleted — an intact
+      // one is either the completed new run or a previous good run.
+      const f = path.join(jobDir, "research", `${type}-findings.json`);
+      try {
+        if (fs.existsSync(f) && parseFindings(fs.readFileSync(f, "utf8")) === null) fs.rmSync(f);
+      } catch {}
+    }
   }
 }
 
@@ -283,7 +441,7 @@ const server = http.createServer(async (req, res) => {
     jobs.set(id, { events: [], listeners: new Set(), running: false });
     return json(res, 200, { job: id });
   }
-  if (!job && url.pathname.startsWith("/api/") && url.pathname !== "/api/build" && url.pathname !== "/api/verify") {
+  if (!job && url.pathname.startsWith("/api/") && url.pathname !== "/api/build" && url.pathname !== "/api/verify" && url.pathname !== "/api/research") {
     if (url.pathname !== "/api/status") return json(res, 404, { error: "unknown job" });
   }
   if (req.method === "POST" && url.pathname === "/api/upload") {
@@ -315,13 +473,57 @@ const server = http.createServer(async (req, res) => {
         phases = [{ prompt: VERIFY_PROMPT }];
       } else {
         // Prompt is optional — buildPrompt() supplies a sane default when
-        // the buyer leaves it blank, so no empty-prompt 400 here.
-        phases = [{ prompt: buildPrompt(prompt) }];
+        // the buyer leaves it blank, so no empty-prompt 400 here. The
+        // research bridge rides along only when findings exist on disk.
+        phases = [{ prompt: buildPrompt(prompt, hasResearchFindings(path.join(JOBS, id))) }];
       }
-      runAgent(id, phases);
+      // Fire-and-forget: the run reports itself over SSE. A rejection here has
+      // no handler, and an unhandled rejection takes the whole server down.
+      runAgent(id, phases).catch((err) => emit(jobs.get(id), "error", `Something went wrong: ${err.message}`));
       json(res, 200, { ok: true });
     });
     return;
+  }
+  if (req.method === "POST" && url.pathname === "/api/research") {
+    if (!requireJson(req, res)) return;
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      let parsed;
+      try {
+        parsed = JSON.parse(body || "{}");
+      } catch {
+        return json(res, 400, { error: "bad request body" });
+      }
+      const j = jobs.get(parsed.job);
+      if (!j) return json(res, 404, { error: "unknown job" });
+      if (j.running) return json(res, 409, { error: "already running" });
+      const v = validateResearchRequest(parsed);
+      if (!v.ok) return json(res, 400, { error: v.error });
+      // Same fire-and-forget contract as /api/build: mkdirSync in runResearch
+      // runs outside its try, so a bad job dir would otherwise reject with no
+      // handler and kill the process.
+      runResearch(parsed.job, v.type, v.address).catch((err) =>
+        emit(j, "error", `Couldn't start the research: ${err.message}`)
+      );
+      json(res, 200, { ok: true });
+    });
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/research") {
+    if (!job) return json(res, 404, { error: "unknown job" });
+    const t = url.searchParams.get("type") || "";
+    if (!Object.prototype.hasOwnProperty.call(RESEARCH_TYPES, t)) return json(res, 400, { error: "unknown research type" });
+    const dir = path.join(JOBS, jobId, "research");
+    let brief = null;
+    let findings = null;
+    try {
+      brief = fs.readFileSync(path.join(dir, `${t}-brief.md`), "utf8");
+    } catch {}
+    try {
+      findings = parseFindings(fs.readFileSync(path.join(dir, `${t}-findings.json`), "utf8"));
+    } catch {}
+    return json(res, 200, { brief, findings, usable: !!(brief && findings) });
   }
   if (req.method === "GET" && url.pathname === "/api/progress") {
     res.writeHead(200, {
@@ -388,6 +590,11 @@ module.exports = {
   safeName,
   agentOptions,
   ensureWorkspaceBoundary,
+  researchPrompt,
+  validateResearchRequest,
+  RESEARCH_TYPES,
+  parseFindings,
+  hasResearchFindings,
 };
 
 if (require.main === module) {
