@@ -3,3 +3,4 @@ node_modules/
 local/
 om-builder/app/node_modules/
 om-builder/workspace/jobs/
+.DS_Store
