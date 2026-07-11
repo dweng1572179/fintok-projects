@@ -247,3 +247,19 @@ test("hasResearchFindings detects findings files and nothing else", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("hasResearchFindings ignores a findings file that doesn't parse", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omb-research-"));
+  try {
+    fs.mkdirSync(path.join(dir, "research"));
+    // A run that SUCCEEDS but writes garbage leaves this behind — runResearch
+    // only cleans up malformed files after a failed run. The build bridge must
+    // not switch on for it.
+    fs.writeFileSync(path.join(dir, "research", "comps-findings.json"), "[{trunca");
+    assert.strictEqual(hasResearchFindings(dir), false, "malformed findings are not findings");
+    fs.writeFileSync(path.join(dir, "research", "market-findings.json"), '[{"field":"vacancy"}]');
+    assert.strictEqual(hasResearchFindings(dir), true, "one good file alongside a bad one still counts");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

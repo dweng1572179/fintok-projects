@@ -145,14 +145,27 @@ function parseFindings(text) {
   return Array.isArray(data) ? data : null;
 }
 
-// The build bridge switches on this: any *-findings.json under research/
-// means a build should be told to use the research.
+// The build bridge switches on this: any *-findings.json under research/ that
+// actually PARSES means a build should be told to use the research. A run that
+// succeeded but wrote garbage leaves a file on disk that runResearch() won't
+// clean up (it only deletes malformed files after a FAILED run) — reading it
+// here keeps that file from silently switching the bridge on.
 function hasResearchFindings(jobDir) {
+  const dir = path.join(jobDir, "research");
+  let names;
   try {
-    return fs.readdirSync(path.join(jobDir, "research")).some((f) => f.endsWith("-findings.json"));
+    names = fs.readdirSync(dir);
   } catch {
     return false; // no research/ dir — the common case
   }
+  return names.some((f) => {
+    if (!f.endsWith("-findings.json")) return false;
+    try {
+      return parseFindings(fs.readFileSync(path.join(dir, f), "utf8")) !== null;
+    } catch {
+      return false;
+    }
+  });
 }
 
 // Replaces (or inserts) the ANTHROPIC_API_KEY= line in the bundle-root env
@@ -464,7 +477,9 @@ const server = http.createServer(async (req, res) => {
         // research bridge rides along only when findings exist on disk.
         phases = [{ prompt: buildPrompt(prompt, hasResearchFindings(path.join(JOBS, id))) }];
       }
-      runAgent(id, phases);
+      // Fire-and-forget: the run reports itself over SSE. A rejection here has
+      // no handler, and an unhandled rejection takes the whole server down.
+      runAgent(id, phases).catch((err) => emit(jobs.get(id), "error", `Something went wrong: ${err.message}`));
       json(res, 200, { ok: true });
     });
     return;
@@ -485,7 +500,12 @@ const server = http.createServer(async (req, res) => {
       if (j.running) return json(res, 409, { error: "already running" });
       const v = validateResearchRequest(parsed);
       if (!v.ok) return json(res, 400, { error: v.error });
-      runResearch(parsed.job, v.type, v.address);
+      // Same fire-and-forget contract as /api/build: mkdirSync in runResearch
+      // runs outside its try, so a bad job dir would otherwise reject with no
+      // handler and kill the process.
+      runResearch(parsed.job, v.type, v.address).catch((err) =>
+        emit(j, "error", `Couldn't start the research: ${err.message}`)
+      );
       json(res, 200, { ok: true });
     });
     return;
