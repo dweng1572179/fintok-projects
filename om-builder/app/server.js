@@ -54,6 +54,74 @@ function buildPrompt(userText) {
   return (text || DEFAULT_BUILD_INSTRUCTION) + BUILD_GUARDRAILS;
 }
 
+// ---- research suite (spec: docs/research-suite-design.md) ----
+// Web research on the buyer's own key. Output contract: exactly two files in
+// research/, one human brief + one structured findings file the build bridge
+// consumes. The honesty rules mirror the kit's [TBD] discipline.
+function researchContract(type) {
+  return (
+    "\n\nWrite your results as exactly two files inside a research/ folder in the current directory:\n" +
+    `1. research/${type}-brief.md — a readable brief for a commercial real-estate broker. End it with a '## Sources' section listing every source you used as a markdown link, each with the date the information is from.\n` +
+    `2. research/${type}-findings.json — a JSON array where each element is {"field": string, "value": string or number, "unit": string, "source_url": string, "as_of": string, "confidence": "high"|"medium"|"low"}.\n` +
+    "Rules: never state a figure without a source URL; label estimates as estimates; if you cannot find something, say so plainly in the brief instead of approximating. " +
+    "Use web search for all facts about this specific property and market — do not rely on memory for them."
+  );
+}
+
+const RESEARCH_TYPES = {
+  property: {
+    intro: "Researching the property…",
+    prompt: (address) =>
+      `Research the property at ${address} using web search. Find: sale and listing history with dates and ` +
+      "prices, unit mix and building size, year built, owner of record where public, zoning, and any news " +
+      "mentions of the property.",
+  },
+  comps: {
+    intro: "Finding comparable sales and rents…",
+    prompt: (address) =>
+      `Research comparables for the subject property at ${address} using web search: recent comparable sales ` +
+      "and rent comps in the same submarket. For each comp give the address, sale or listing date, price, " +
+      "$/unit, $/SF, cap rate where reported, and approximate distance from the subject. Present the comps as " +
+      "a markdown table in the brief, followed by a short narrative of what they suggest about the subject.",
+  },
+  market: {
+    intro: "Researching the market…",
+    prompt: (address) =>
+      `Research the submarket around ${address} using web search. Cover the fundamentals: asking rents and ` +
+      "rent trends, vacancy, demographics (population and incomes), major employers, and the supply pipeline " +
+      "(projects under construction or proposed). Then add a '## Last 30 days' section covering recent news " +
+      "relevant to this submarket — transactions, openings and closures, policy changes, anything a broker " +
+      "writing an OM should know happened recently.",
+  },
+  tbd: {
+    intro: "Hunting down the deck's missing numbers…",
+    prompt: (address) =>
+      `The current folder contains a built .pptx offering memorandum for the property at ${address}, plus the ` +
+      "deal documents it was built from. First open the deck (python-pptx is available) and list every [TBD] " +
+      "marker with the slide it sits on and what value it stands in for. Then research JUST those missing " +
+      "items using web search. In the brief, give one section per [TBD] with what you found, or a plain " +
+      "statement that it could not be found.",
+  },
+};
+
+function researchPrompt(type, address) {
+  const def = Object.prototype.hasOwnProperty.call(RESEARCH_TYPES, type) ? RESEARCH_TYPES[type] : null;
+  if (!def) throw new Error(`unknown research type: ${type}`);
+  const addr = String(address || "").trim();
+  if (!addr) throw new Error("address required");
+  return def.prompt(addr) + researchContract(type);
+}
+
+// Pure request gate for POST /api/research — factored out so the 400 paths
+// are unit-testable without a live server (same pattern as isValidKeyPrefix).
+function validateResearchRequest(body) {
+  const type = String((body && body.type) || "");
+  if (!Object.prototype.hasOwnProperty.call(RESEARCH_TYPES, type)) return { ok: false, error: "unknown research type" };
+  const address = String((body && body.address) || "").trim();
+  if (!address) return { ok: false, error: "enter the property address first" };
+  return { ok: true, type, address };
+}
+
 // Replaces (or inserts) the ANTHROPIC_API_KEY= line in the bundle-root env
 // file's text, leaving every other line — including comments — untouched.
 // Pure so it's unit-testable without touching the filesystem.
@@ -388,6 +456,9 @@ module.exports = {
   safeName,
   agentOptions,
   ensureWorkspaceBoundary,
+  researchPrompt,
+  validateResearchRequest,
+  RESEARCH_TYPES,
 };
 
 if (require.main === module) {

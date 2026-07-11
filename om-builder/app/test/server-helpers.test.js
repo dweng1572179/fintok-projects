@@ -10,6 +10,8 @@ const {
   safeName,
   agentOptions,
   ensureWorkspaceBoundary,
+  researchPrompt,
+  validateResearchRequest,
 } = require("../server.js");
 
 test("parseEnvFile reads the key line, ignores comments/blanks", () => {
@@ -153,4 +155,53 @@ test("writeKeyLine replaces a previously-set key, not just an empty one", () => 
   const after = writeKeyLine(before, "sk-ant-newkey111");
   assert.ok(after.includes("ANTHROPIC_API_KEY=sk-ant-newkey111"));
   assert.ok(!after.includes("oldkey000"));
+});
+
+test("researchPrompt embeds the address and the output contract for every type", () => {
+  const addr = "845 S Kenmore Ave, Los Angeles, CA 90005";
+  for (const type of ["property", "comps", "market", "tbd"]) {
+    const p = researchPrompt(type, addr);
+    assert.ok(p.includes(addr), `${type} includes the address`);
+    assert.ok(p.includes(`research/${type}-brief.md`), `${type} names its brief file`);
+    assert.ok(p.includes(`research/${type}-findings.json`), `${type} names its findings file`);
+    assert.ok(p.includes("## Sources"), `${type} demands a sources section`);
+    assert.ok(p.includes('"confidence"'), `${type} demands confidence ratings`);
+    assert.ok(p.includes("never state a figure without a source URL"), `${type} carries the honesty rule`);
+    assert.ok(p.includes("do not rely on memory"), `${type} forbids from-memory facts`);
+  }
+});
+
+test("researchPrompt per-type content", () => {
+  const addr = "845 S Kenmore Ave, Los Angeles, CA 90005";
+  assert.ok(researchPrompt("property", addr).includes("sale and listing history"));
+  assert.ok(researchPrompt("property", addr).includes("owner of record"));
+  const comps = researchPrompt("comps", addr);
+  assert.ok(comps.includes("$/unit") && comps.includes("$/SF") && comps.includes("cap rate"));
+  assert.ok(comps.includes("markdown table"));
+  const market = researchPrompt("market", addr);
+  assert.ok(market.includes("Last 30 days"));
+  assert.ok(market.includes("vacancy") && market.includes("supply pipeline"));
+  const tbd = researchPrompt("tbd", addr);
+  assert.ok(tbd.includes("[TBD]"));
+  assert.ok(tbd.includes("python-pptx"));
+});
+
+test("researchPrompt rejects unknown types and blank addresses", () => {
+  assert.throws(() => researchPrompt("weather", "somewhere"));
+  assert.throws(() => researchPrompt("property", ""));
+  assert.throws(() => researchPrompt("property", "   "));
+  assert.throws(() => researchPrompt("property", undefined));
+});
+
+test("validateResearchRequest gates type and address", () => {
+  assert.deepStrictEqual(
+    validateResearchRequest({ type: "comps", address: " 1 Main St " }),
+    { ok: true, type: "comps", address: "1 Main St" }
+  );
+  assert.strictEqual(validateResearchRequest({ type: "weather", address: "x" }).ok, false);
+  assert.strictEqual(validateResearchRequest({ type: "property", address: "" }).ok, false);
+  assert.strictEqual(validateResearchRequest({ type: "property" }).ok, false);
+  assert.strictEqual(validateResearchRequest({}).ok, false);
+  // prototype names must not pass the type check
+  assert.strictEqual(validateResearchRequest({ type: "toString", address: "x" }).ok, false);
 });
