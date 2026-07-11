@@ -2,6 +2,8 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const path = require("node:path");
+const fs = require("node:fs");
+const os = require("node:os");
 const {
   parseEnvFile,
   writeKeyLine,
@@ -12,6 +14,8 @@ const {
   ensureWorkspaceBoundary,
   researchPrompt,
   validateResearchRequest,
+  parseFindings,
+  hasResearchFindings,
 } = require("../server.js");
 
 test("parseEnvFile reads the key line, ignores comments/blanks", () => {
@@ -204,4 +208,28 @@ test("validateResearchRequest gates type and address", () => {
   assert.strictEqual(validateResearchRequest({}).ok, false);
   // prototype names must not pass the type check
   assert.strictEqual(validateResearchRequest({ type: "toString", address: "x" }).ok, false);
+});
+
+test("parseFindings returns the array or null — never throws", () => {
+  assert.deepStrictEqual(parseFindings('[{"field":"vacancy","value":4.2}]'), [{ field: "vacancy", value: 4.2 }]);
+  assert.deepStrictEqual(parseFindings("[]"), []);
+  assert.strictEqual(parseFindings("{not json"), null);
+  assert.strictEqual(parseFindings('{"field":"x"}'), null, "an object is not a findings array");
+  assert.strictEqual(parseFindings('"hello"'), null);
+  assert.strictEqual(parseFindings(""), null);
+});
+
+test("hasResearchFindings detects findings files and nothing else", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omb-research-"));
+  try {
+    assert.strictEqual(hasResearchFindings(dir), false, "no research/ dir");
+    fs.mkdirSync(path.join(dir, "research"));
+    assert.strictEqual(hasResearchFindings(dir), false, "empty research/ dir");
+    fs.writeFileSync(path.join(dir, "research", "market-brief.md"), "# brief");
+    assert.strictEqual(hasResearchFindings(dir), false, "a brief alone is not findings");
+    fs.writeFileSync(path.join(dir, "research", "market-findings.json"), "[]");
+    assert.strictEqual(hasResearchFindings(dir), true, "one findings file is enough");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

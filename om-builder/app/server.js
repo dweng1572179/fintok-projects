@@ -122,6 +122,29 @@ function validateResearchRequest(body) {
   return { ok: true, type, address };
 }
 
+// A findings file is only trustworthy if it parses to a JSON array. Anything
+// else — truncated write from an aborted run, an object, prose — returns null
+// so callers treat the file as absent.
+function parseFindings(text) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  return Array.isArray(data) ? data : null;
+}
+
+// The build bridge switches on this: any *-findings.json under research/
+// means a build should be told to use the research.
+function hasResearchFindings(jobDir) {
+  try {
+    return fs.readdirSync(path.join(jobDir, "research")).some((f) => f.endsWith("-findings.json"));
+  } catch {
+    return false; // no research/ dir — the common case
+  }
+}
+
 // Replaces (or inserts) the ANTHROPIC_API_KEY= line in the bundle-root env
 // file's text, leaving every other line — including comments — untouched.
 // Pure so it's unit-testable without touching the filesystem.
@@ -459,6 +482,8 @@ module.exports = {
   researchPrompt,
   validateResearchRequest,
   RESEARCH_TYPES,
+  parseFindings,
+  hasResearchFindings,
 };
 
 if (require.main === module) {
