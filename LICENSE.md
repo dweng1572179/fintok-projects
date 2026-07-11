@@ -4,9 +4,9 @@ Required Notice: Copyright FinTok (https://fintok.news)
 
 **In plain English (summary only — the license text below is what actually governs):**
 
-1. Free to use for **personal projects** and **internal business use** — run OpenProp on your own deals, follow the guides, build your own workflows, no fee.
+1. Free to use for **personal projects** and **internal business use** — run the tools on your own deals, follow the guides, build your own workflows, no fee.
 2. You may **copy, modify, and share** it, as long as recipients also get these terms.
-3. You may **not resell or repackage** it as a competing product or service (e.g. a paid property-data SaaS built on OpenProp).
+3. You may **not resell or repackage** it as a competing product or service (e.g. a paid real-estate SaaS built on these tools).
 4. **Nonprofits, schools, research, and government** count as permitted (noncommercial) use.
 5. It comes with **no warranty** — use it at your own risk; the author is not liable.
 6. Want to use it commercially in a way this doesn't allow? Ask for a separate license.
