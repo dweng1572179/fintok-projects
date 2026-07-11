@@ -46,12 +46,22 @@ const VERIFY_PROMPT =
 // zero typing required. Same guardrail block applies either way.
 const DEFAULT_BUILD_INSTRUCTION = "Build an offering memorandum from the documents in the current folder.";
 
+// Appended to the build prompt ONLY when research findings exist in the job
+// dir. Deal docs beat web research; researched figures are always cited; a
+// [TBD] only falls to a high-confidence finding. (Spec: build integration.)
+const RESEARCH_BRIDGE =
+  "\n\nResearch briefs exist in the research/ folder (research/*-brief.md with matching *-findings.json). " +
+  "Use them to fill gaps the deal documents don't cover — the deal documents always win when they conflict. " +
+  "Every researched figure used in the deck must be cited: add a final 'Sources & Data Notes' slide listing " +
+  "each researched figure, its source, and its as-of date. Only replace a [TBD] with a researched figure whose " +
+  "confidence is high; otherwise keep the [TBD].";
+
 // The buyer's freeform text, verbatim, followed by the standing guardrails.
 // Blank/missing input falls back to DEFAULT_BUILD_INSTRUCTION — the prompt
 // panel is optional, not required.
-function buildPrompt(userText) {
+function buildPrompt(userText, withResearch) {
   const text = String(userText || "").trim();
-  return (text || DEFAULT_BUILD_INSTRUCTION) + BUILD_GUARDRAILS;
+  return (text || DEFAULT_BUILD_INSTRUCTION) + BUILD_GUARDRAILS + (withResearch ? RESEARCH_BRIDGE : "");
 }
 
 // ---- research suite (spec: docs/research-suite-design.md) ----

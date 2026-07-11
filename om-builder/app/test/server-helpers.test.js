@@ -210,6 +210,20 @@ test("validateResearchRequest gates type and address", () => {
   assert.strictEqual(validateResearchRequest({ type: "toString", address: "x" }).ok, false);
 });
 
+test("buildPrompt appends the research bridge only when asked", () => {
+  const withR = buildPrompt("Build my OM", true);
+  assert.ok(withR.includes("research/ folder"));
+  assert.ok(withR.includes("deal documents always win"));
+  assert.ok(withR.includes("Sources & Data Notes"));
+  assert.ok(withR.includes("confidence is high"));
+  assert.ok(withR.startsWith("Build my OM"), "buyer text still leads");
+  assert.ok(withR.includes("[TBD] marker, never a guess"), "guardrails still present");
+  const without = buildPrompt("Build my OM", false);
+  assert.ok(!without.includes("Sources & Data Notes"));
+  const oneArg = buildPrompt("Build my OM");
+  assert.ok(!oneArg.includes("Sources & Data Notes"), "single-arg call unchanged");
+});
+
 test("parseFindings returns the array or null — never throws", () => {
   assert.deepStrictEqual(parseFindings('[{"field":"vacancy","value":4.2}]'), [{ field: "vacancy", value: 4.2 }]);
   assert.deepStrictEqual(parseFindings("[]"), []);
