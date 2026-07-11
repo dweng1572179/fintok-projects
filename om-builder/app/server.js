@@ -236,7 +236,11 @@ function readKey() {
 function agentOptions(jobDir) {
   return {
     cwd: jobDir,
-    model: "claude-opus-4-8",
+    // Fable 5 by Ben's call (2026-07-11): Anthropic's most capable model.
+    // Caveats vs Opus 4.8: ~2x per-token price, buyer's org must allow
+    // 30-day data retention (ZDR orgs 400 on every request), and safety
+    // classifiers can occasionally refuse — surfaced as a normal run error.
+    model: "claude-fable-5",
     settingSources: ["project"],
     skills: "all",
     permissionMode: "bypassPermissions",
