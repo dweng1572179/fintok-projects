@@ -6,8 +6,8 @@
 
 | Half | Where | Status |
 |---|---|---|
-| **Public pages** — fintok.news/projects + /projects/om-builder (free DIY guide + pay-what-you-want CTA) | `frontend/src/components/projects/` + `frontend/src/app/projects/` | LIVE and verified on production |
-| **The product** — downloadable bundle (local web app + vendored kit + Node/Python runtimes, zero installs for the buyer) | `projects/om-builder/` (source) · zips attached to the GitHub release | Built, security-reviewed, E2E-proven |
+| **Public pages** — fintok.news/projects + /projects/om-builder (free DIY guide + pay-what-you-want CTA) | `web/` in THIS repo (static export; the fintok frontend serves the built files verbatim) | LIVE and verified on production |
+| **The product** — downloadable bundle (local web app + vendored kit + Node/Python runtimes, zero installs for the buyer) | `om-builder/` in THIS repo (source); build zips with `bash build.sh` (macOS) | Built, security-reviewed, E2E-proven |
 
 ## Proof it works (real end-to-end)
 
@@ -15,13 +15,13 @@ A real deal was run through the exact buyer flow: two large broker OMs in (19 MB
 
 ## Launch checklist (what's actually left)
 
-1. **Gumroad** — the entire payment system; nothing to build. Create a product at slug `om-builder` on the fintok Gumroad account, price **$0+** (pay-what-you-want), attach the two zips (from the GitHub release assets, or rebuild via `bash projects/om-builder/build.sh`), publish. The live site's buttons already point at `https://fintok.gumroad.com/l/om-builder`. Alternative: paste a hosted download link into the product instead of uploading files (Gumroad supports both; uploads are better — buyers get library updates).
+1. **Gumroad** — the entire payment system; nothing to build. Create a product at slug `om-builder` on the fintok Gumroad account, price **$0+** (pay-what-you-want), attach the two zips (rebuild via `cd om-builder && bash build.sh` on a Mac — output lands in `om-builder/dist/`), publish. The live site's buttons already point at `https://fintok.gumroad.com/l/om-builder`. Alternative: paste a hosted download link into the product instead of uploading files (Gumroad supports both; uploads are better — buyers get library updates).
 2. **DNS** — bare `fintok.news` 404s on deep paths (old registrar URL-forwarder). At the DNS provider: point `fintok.news` → CNAME/ALIAS `sedkxujb.up.railway.app`. Railway side is already configured. `www.` works fine today.
-3. **Pricing copy (optional)** — the site says builds bill "$2–8"; real-world: simple builds $2–8, template-clone jobs on big decks **$15–25** (a saved template profile roughly halves repeat cost). Update `frontend/src/components/projects/OmBuilderPage.tsx` + the bundle UI footer if you want the honest range.
+3. **Pricing copy (optional)** — the site says builds bill "$2–8"; real-world: simple builds $2–8, template-clone jobs on big decks **$15–25** (a saved template profile roughly halves repeat cost). Update `web/src/components/OmBuilderPage.tsx` + the bundle UI footer if you want the honest range. Note: after changing `web/`, run `npm run build` and hand the `web/out/` folder to whoever maintains the fintok frontend (it serves those files from its `public/projects/`).
 
 ## How to test the product locally (10 minutes)
 
-1. Download `OM-Builder-Mac.zip` from the GitHub release, unzip anywhere.
+1. Build the zips (`cd om-builder && bash build.sh`) or get `OM-Builder-Mac.zip` from Darryl; unzip anywhere.
 2. Double-click `Start OM Builder.command` (first time: right-click → Open — it's unsigned).
 3. The browser opens; paste an Anthropic API key (console.anthropic.com → API keys) into the panel.
 4. Drop deal docs, optionally type instructions, **Build my OM** (~10–25 min, bills the key), download.
@@ -32,7 +32,7 @@ A real deal was run through the exact buyer flow: two large broker OMs in (19 MB
 - **Model:** hardcoded `claude-opus-4-8`. Everything is BYOK — no server, no accounts, no billing infra on our side.
 - **Architecture:** `app/server.js` (stdlib Node, binds 127.0.0.1 only) drives the Claude Agent SDK inside a per-job folder; skills live in `workspace/.claude/skills/` (the 3 kit skills + Anthropic's pptx/docx/pdf document skills, all vendored). The agent's environment is sealed — it cannot see the buyer's MCP servers or Claude config (proven by reproduction test).
 - **Security posture:** filename sanitization everywhere, download-route hardening, strict key validation (`sk-ant-` charset), JSON-only POSTs (CSRF guard), key never logged. All from adversarial review with reproduced exploits, then re-verified fixed.
-- **Rebuilding zips:** `cd projects/om-builder && bash build.sh` (macOS; downloads are cached in `downloads/`). Pins: Node v20.18.1, CPython 3.12.8, kit commit + SDK version recorded in each zip's `bundle-manifest.txt`.
+- **Rebuilding zips:** `cd om-builder && bash build.sh` (macOS; downloads are cached in `downloads/`). Pins: Node v20.18.1, CPython 3.12.8, kit commit + SDK version recorded in each zip's `bundle-manifest.txt`.
 - **Known limits:** Windows zip is build-verified but never run on real Windows (treat first Windows buyer as beta). The DIY guide's "build it yourself" prompts (steps 03/04/07 on the site) are derived from the real code but haven't been dry-run by a fresh reader. Binaries are unsigned (Gatekeeper/SmartScreen one-time warnings — the buyer README covers it with exact steps).
 - **License:** the underlying kit is PolyForm Noncommercial 1.0.0 (source-available; buyer README credits it).
 
@@ -43,4 +43,4 @@ A real deal was run through the exact buyer flow: two large broker OMs in (19 MB
 
 ## Repo docs trail
 
-Product history + every decision/verification: `docs/STATE.md` (§11.461 banner entries) and `docs/superpowers/notes/2026-04-23-spec-alignment-ledger.md` (§11.461 addenda 1–9). Design spec: `docs/superpowers/specs/2026-07-10-projects-om-builder-design.md`.
+Design spec and implementation plan: `docs/` in this repo.
