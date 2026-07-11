@@ -141,16 +141,26 @@ refreshes ~2×/year — cache by parcel key indefinitely; a nightly refresh is w
 
 ### Layer 3 — Search: LLM parse → hard filter → hybrid rank → LLM reply
 
-Mirrors SpaceFinder's `POST /api/search` pipeline.
+Mirrors SpaceFinder's `POST /api/search` **verbatim as the wire contract**:
+- **Request** `{ message, priorState, sessionId, metro }` — `metro` ∈ `nyc|mia|la|chi`;
+  `sessionId` keys a `search_session` row (the "Recent" chat history); `priorState`
+  carries the prior `query.mustHaves` so a follow-up ("make it bigger, drop the rent
+  cap") refines instead of restarting.
+- **Response** `{ query, results[], reply, isNearMiss, suggestions[] }`.
 
-1. **Parse** — `anthropic.messages.parse()` → `ListingQuery` (property types, SF range,
-   rent range, geo bbox, metro). **Sentinels, not nulls** — the hard-won OpenProp
-   lesson: >16 nullable params → 400; *any* optional param → the request **hangs**
-   (2^N grammar shapes). All fields required; `""`/`0` mean "not mentioned." Unit
-   conversion lives in the prompt: "under $12k/mo" + parsed SF → `$/SF/yr`. No key →
-   rules parser, **loudly logged** (a silent fallback hid a 400 for OpenProp's whole life).
-2. **Filter** — property_type / SF / rent / bbox / metro go in the **SQL WHERE** as
-   hard constraints. Never soft-ranked away.
+1. **Parse** — `anthropic.messages.parse()` → `query.mustHaves`, mirroring SpaceFinder's
+   field names: `propertyTypes[]`, `transactionType` (`lease|sale`), `boroughs[]`,
+   `neighborhood`, `minSizeSf`/`maxSizeSf`, `maxRentPerSfYr`, `minLat/maxLat/minLng/maxLng`,
+   `excludeAddrStates[]`, `excludeZip3[]`, `excludeCities[]`. **Sentinels, not nulls** —
+   the hard-won OpenProp lesson: >16 nullable params → 400; *any* optional param → the
+   request **hangs** (2^N grammar shapes). All fields required in the schema; `""`/`0`/`[]`
+   mean "not mentioned," dropped before they become filters. Unit conversion lives in the
+   prompt: "under $12k/mo" + parsed SF → `maxRentPerSfYr` (≈ $12k×12 ÷ SF). "West Village"
+   → bbox + `boroughs` + the `excludeCities` suburb list that scopes to the metro. No key
+   → rules parser, **loudly logged** (a silent fallback hid a 400 for OpenProp's whole life).
+2. **Filter** — `propertyTypes` / SF range / `maxRentPerSfYr` / bbox / `metro` /
+   `transactionType` become the **SQL WHERE**; the `exclude*` lists become `NOT IN`
+   guards. Hard constraints, never soft-ranked away.
 3. **Rank** — over the filtered survivors only:
    - **FTS5 `bm25()`** — compiled into every stock Python (verified: python.org 3.12,
      system, pyenv, Homebrew, Docker slim). `bm25()` is **NEGATIVE** → `ORDER BY ... ASC`.
@@ -163,8 +173,9 @@ Mirrors SpaceFinder's `POST /api/search` pipeline.
    - **Fuse with RRF, k=60** (Cormack/Clarke/Büttcher SIGIR'09), **not weighted sum**
      (BM25 is unbounded/negative, cosine is [-1,1] — incomparable scales). RRF over
      **one** list is order-preserving, so **keyless degrades to pure BM25 with zero
-     branching** in the ranker. Expose a normalized 0–1 `semanticScore` off the fused
-     rank so the API contract is identical either way.
+     branching** in the ranker. Each result carries `semanticScore` (0–1 off the fused
+     rank), a composite `score`, and a one-line `rationale` (why it matched) — SpaceFinder's
+     three per-listing ranking fields — so the contract is identical with or without a key.
    - **NOT sqlite-vec:** needs `enable_load_extension`, **absent on stock python.org
      macOS / pyenv / system python** (present only on Homebrew + Docker). Would work in
      the container and break on the user's Mac — the worst failure mode — and buys
@@ -190,12 +201,13 @@ Mirrors SpaceFinder's `POST /api/search` pipeline.
 ```
 Browser (HTMX + Tailwind CDN + MapLibre)
    └─ openlease (FastAPI, :8788) ── same-origin /api/*
-        ├─ POST /api/search              LLM parse → SQL filter → BM25/RRF → LLM reply
-        ├─ POST /api/listings/{id}/ask   per-listing RAG chat
-        ├─ POST /api/crawl               run the fetch ladder over sources.yml (admin)
+        ├─ POST /api/search              {message,priorState,sessionId,metro} → {query,results,reply,isNearMiss,suggestions}
+        ├─ POST /api/listings/{id}/ask   per-listing RAG chat {question,history}
         ├─ GET  /api/listings/{id}       enriched detail
+        ├─ GET  /api/sessions            "Recent" search history (sessionId-keyed)
+        ├─ POST /api/crawl               run the fetch ladder over sources.yml (admin)
         ├─ portfolios / saves / export / settings
-        └─ server-side: SQLite (listings + parcels + vectors + cache + portfolios)
+        └─ server-side: SQLite (listings + parcels + vectors + sessions + cache + portfolios)
    ├─ overpass-api.de        POIs (ingest-time)
    ├─ router.project-osrm.org airport drive times
    ├─ {metro parcel APIs}    PLUTO / Miami PA / LA Assessor / Cook County
@@ -246,23 +258,41 @@ openlease/
 
 ## 5. Data model (SQLite, WAL, stdlib sqlite3 — no ORM)
 
-- `listing` — id, source, source_url, metro, property_type, subtype, address,
-  neighborhood, borough, lat, lng, size_sf, size_min_sf, size_max_sf,
-  total_building_sf, floor, ceiling_ht_ft, asking_rent, rent_unit, lease_type,
-  availability_date, lease_term_months, condition, our_description (LLM),
-  highlights_json (LLM), broker_name, broker_firm, broker_email, broker_phone,
-  parcel_id, walk_score, transit_score, score_breakdown_json, first_seen, last_seen,
-  UNIQUE(source_url).
-- `listing_fts` — external-content FTS5 (title, our_description, neighborhood) + triggers.
+Columns stored `snake_case`, **serialized to SpaceFinder's `camelCase` at the API
+boundary** so `/api/search` results are field-for-field compatible with the teardown's
+observed listing object (`sizeSf`, `divisibleMinSf`, `ceilingHeightFt`, …).
+
+- `listing` — the ~35-field observed schema, minus the copyright traps:
+  `id, source, source_url, status, metro, property_type, subtype, transaction_type,
+  address, neighborhood, borough, lat, lng, size_sf, divisible_min_sf, divisible_max_sf,
+  total_building_sf, floor, ceiling_height_ft, asking_rent, rent_unit, lease_type,
+  sale_price, availability_date, lease_term_months, condition, broker_name, broker_firm,
+  broker_phone, broker_email, features_json, brochure_url, our_description (LLM-written),
+  highlights_json (LLM), photo_urls_json (external hot-link references — see below),
+  parcel_id, walk_score, transit_score, score_breakdown_json, semantic_score, score,
+  rationale, first_seen, last_seen`, UNIQUE(source_url).
+  - **Two deliberate divergences from SpaceFinder** (CoStar v. CREXi, §2): (1) no
+    `description` column — the broker's marketing prose is **never persisted**; we serve
+    `our_description` (LLM-written) and link `source_url` for the original. (2) `photo_urls`
+    are stored as the broker's own URLs and **referenced, never downloaded/re-hosted**
+    (SpaceFinder mirrors them to S3; we do not). At the API boundary `our_description`
+    serializes as `description` and `photo_urls` as `photos[]` so the client is unchanged.
+- `search_session` — id (= `sessionId`), metro, title, created_at; `search_turn` —
+  session_id, message, mustHaves_json, reply, created_at. Backs "Recent" history and
+  `priorState` follow-up refinement.
+- `listing_fts` — external-content FTS5 (address, our_description, neighborhood) + triggers.
 - `listing_vec` — listing_id, embedding BLOB (float32, L2-normed). Present only with a key.
 - `parcel` — parcel_id (metro-prefixed), metro, owner_name?, zoning?, far_built?,
   far_allowed?, year_built, lot_sqft, bldg_sqft, floors, units, use_code, raw_json.
 - `poi` / `transit_nearby` — cached Overpass + nearest-station results per listing.
 - `portfolio` / `portfolio_item` / `saved` — workspace.
-- `chat` — listing_id, role, content (per-listing RAG history).
+- `chat` — listing_id, role, content (per-listing RAG history, `/api/listings/{id}/ask`).
 - `provider_cache` — **lifted verbatim from OpenProp** (request_hash UNIQUE, cost_cents,
   monthly spend guardrail).
 - `setting` — dashboard-saved keys.
+
+Note `transaction_type` + `sale_price`: SpaceFinder handles **both lease and sale**;
+so do we. The default filter is `lease`, but a "for sale" query flips it.
 
 ## 6. Keyless vs. keyed
 
