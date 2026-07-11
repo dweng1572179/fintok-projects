@@ -11,6 +11,9 @@ om-builder/  Source for the OM Builder product: a local, bring-your-own-key
              (BYOK) desktop app that turns your deal documents into an
              editable offering-memorandum PowerPoint, plus the launchers
              and build script used to package it for distribution.
+openprop/    Source for OpenProp: a self-hosted, BYOK property-intelligence
+             app (FastAPI + SQLite) — free gov data first, paid providers
+             only on cache miss. See openprop/README.md.
 docs/        Design + implementation notes for the OM Builder product.
 ```
 
@@ -37,6 +40,28 @@ macOS only — `build.sh` stages both platform bundles.
 
 Built bundles are **distributed via Gumroad**, not committed to this repo.
 
-## License note
+## Running `openprop/` locally
 
-`build.sh` vendors the OM Builder workflow kit (skills + prompts) from a separate source repository at build time. That vendored kit is licensed under **PolyForm Noncommercial 1.0.0** — see the license terms in the vendored source before reusing it commercially.
+```
+cd openprop
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env    # set OPENPROP_PASSWORD; provider keys go in the Settings UI
+./run.sh
+```
+
+Open `http://localhost:8787`. Runs with zero API keys (free Census + FEMA); paste
+provider keys into **Settings** to unlock the rest. Details in `openprop/README.md`.
+
+## Licensing
+
+Everything in this repo is under **PolyForm Noncommercial 1.0.0** — see
+[`LICENSE.md`](LICENSE.md). Free for personal projects and internal business use
+(run OpenProp on your own deals, follow the guides, all day, no fee); you may
+copy, modify and share it; you may **not** resell or repackage it as a competing
+product. Want a commercial use this doesn't allow? Ask for a separate license.
+
+The OM Builder workflow kit (skills + prompts) is a separate source repository
+that `om-builder/build.sh` vendors at build time. It carries its own `LICENSE.md`
+— also PolyForm Noncommercial 1.0.0 — which ships inside the built bundle rather
+than living in this repo.
