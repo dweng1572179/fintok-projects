@@ -1,0 +1,5 @@
+node_modules/
+.next/
+local/
+om-builder/app/node_modules/
+om-builder/workspace/jobs/

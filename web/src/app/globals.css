@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+/* Only the tokens/utilities the ported /projects pages actually use — see
+   fintok's frontend/src/app/globals.css for the full design-system source
+   this was extracted from. Everything else (ds-* tokens, signal colors,
+   chart vars, sidebar vars) is unused by ProjectsIndex/OmBuilderPage/
+   PromptBlock/guide-content and intentionally not ported. */
+@theme inline {
+  --font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  --font-masthead: var(--font-anton), "Arial Narrow", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Tracked-caps letter-spacing + the single rounded register used by the
+     eyebrow labels, nav links, and CTA buttons. */
+  --tracking-eyebrow: 0.16em;
+  --tracking-nav: 0.14em;
+  --radius-control: 3px;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: #0b0b0c;
+    color: #ffffff;
+    font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}

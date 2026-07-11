@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OM Builder — Getting Started</title>
+<style>
+  :root {
+    --bg: #faf6ee;
+    --panel: #ffffff;
+    --ink: #2a2420;
+    --ink-soft: #6b6259;
+    --accent: #b5651d;
+    --accent-dark: #8f4e15;
+    --line: #e6ddcc;
+    --good: #2f7a3d;
+    --good-bg: #eaf6ec;
+    --warn: #8f4e15;
+    --warn-bg: #fff6e0;
+    --warn-line: #e6cf8c;
+  }
+  * { box-sizing: border-box; }
+  html { font-size: 18px; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    line-height: 1.55;
+    padding-bottom: 4rem;
+  }
+  header {
+    padding: 2.25rem 1.5rem 1.75rem;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    text-align: center;
+  }
+  .wordmark {
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+  .wordmark span { color: var(--accent); }
+  .tagline { color: var(--ink-soft); font-size: 1.1rem; margin-top: 0.4rem; }
+  main {
+    max-width: 42rem;
+    margin: 0 auto;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    padding: 1.85rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .panel h2 {
+    margin: 0 0 1.1rem 0;
+    font-size: 1.45rem;
+    font-weight: 800;
+  }
+  .panel > p:first-of-type { margin-top: 0; }
+  .steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+  .steps li {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+  .step-num {
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 800;
+    font-size: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .step-body { padding-top: 0.25rem; }
+  .step-body strong { display: block; font-size: 1.15rem; margin-bottom: 0.2rem; }
+  .step-body code {
+    background: #f3ede0;
+    border: 1px solid var(--line);
+    border-radius: 0.4rem;
+    padding: 0.1rem 0.4rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.92em;
+  }
+  .os-block {
+    margin-top: 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--warn-line);
+    background: var(--warn-bg);
+    padding: 1.1rem 1.3rem;
+  }
+  .os-block + .os-block { margin-top: 0.9rem; }
+  .os-block .os-name {
+    font-weight: 800;
+    color: var(--warn);
+    font-size: 1.05rem;
+    margin-bottom: 0.35rem;
+  }
+  .os-block p { margin: 0; }
+  a { color: var(--accent-dark); font-weight: 700; }
+  a:hover { color: var(--accent); }
+  .badge-row { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.25rem; }
+  .badge {
+    background: var(--good-bg);
+    color: var(--good);
+    border-radius: 999px;
+    padding: 0.4rem 0.9rem;
+    font-weight: 700;
+    font-size: 0.95rem;
+  }
+  footer {
+    max-width: 42rem;
+    margin: 1rem auto 0;
+    padding: 0 1.5rem;
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+    text-align: center;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1712;
+      --panel: #2a231c;
+      --ink: #f2e9dc;
+      --ink-soft: #b8ab97;
+      --accent: #d98b3f;
+      --accent-dark: #eda252;
+      --line: #453b30;
+      --good: #6fcf7d;
+      --good-bg: #1e3322;
+      --warn: #f2c063;
+      --warn-bg: #3a3115;
+      --warn-line: #6b5a24;
+    }
+    .step-body code { background: #362d23; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="wordmark">OM <span>Builder</span></div>
+    <div class="tagline">Getting started — read this once, then you're done</div>
+  </header>
+
+  <main>
+
+    <section class="panel">
+      <h2>Three steps, ever.</h2>
+      <p>You will only ever do these three things. No installing, no terminal, no setup.</p>
+      <ol class="steps">
+        <li>
+          <span class="step-num">1</span>
+          <span class="step-body">
+            <strong>Get your key.</strong>
+            Go to <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a> &rarr; API keys &rarr; Create key. Copy it.
+          </span>
+        </li>
+        <li>
+          <span class="step-num">2</span>
+          <span class="step-body">
+            <strong>Paste it in.</strong>
+            Open the file <code>PUT-YOUR-KEY-HERE.env</code> in this folder and paste your key after the <code>=</code> sign. Save the file.
+          </span>
+        </li>
+        <li>
+          <span class="step-num">3</span>
+          <span class="step-body">
+            <strong>Double-click <code>Start OM Builder</code>.</strong>
+            Your browser opens automatically. Drop in your deal documents and build.
+          </span>
+        </li>
+      </ol>
+    </section>
+
+    <section class="panel">
+      <h2>The first time you open it</h2>
+      <p>Your computer doesn't recognize this app yet, so it shows a warning the very first time. This is normal — you only see it once.</p>
+      <div class="os-block">
+        <div class="os-name">On a Mac</div>
+        <p>macOS will say it can't verify the developer. Right-click (or hold Control and click) <code>Start OM Builder.command</code> → Open → Open. You only do this once.</p>
+      </div>
+      <div class="os-block">
+        <div class="os-name">On Windows</div>
+        <p>Windows may show "Windows protected your PC". Click More info → Run anyway. You only do this once.</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>What it costs</h2>
+      <p>Builds bill your own Anthropic key — typically a few dollars per OM. Nothing else is billed by anyone.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Your privacy</h2>
+      <p>Your deal documents stay on your computer. The only place anything is sent is Anthropic's API, using your own key.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Updating</h2>
+      <p>New version = download the new zip from your Gumroad library and replace the folder. Your key file can be copied over.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Credits &amp; license</h2>
+      <p>OM Builder is built on the open-source FinTok OM Builder kit.</p>
+      <div class="badge-row">
+        <a class="badge" href="https://github.com/benfan87/fintok-om-builder" target="_blank" rel="noopener">GitHub &rarr;</a>
+        <a class="badge" href="https://www.fintok.news/projects/om-builder" target="_blank" rel="noopener">fintok.news/projects/om-builder &rarr;</a>
+      </div>
+      <p style="margin-top:1rem;">Licensed under <strong>PolyForm Noncommercial 1.0.0</strong>.</p>
+    </section>
+
+  </main>
+
+  <footer>
+    OM Builder &middot; a FinTok project
+  </footer>
+</body>
+</html>
