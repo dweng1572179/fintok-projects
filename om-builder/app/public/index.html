@@ -510,8 +510,8 @@
     </section>
 
     <section class="panel">
-      <h2><span class="step-num">1</span>Drop your template <span style="font-weight:400;color:var(--ink-soft);font-size:1rem;">(optional)</span></h2>
-      <p class="helper">The deck whose look you want — your formatting reference. Skip it and you get a clean default design.</p>
+      <h2><span class="step-num">1</span>Drop your template</h2>
+      <p class="helper">The deck whose look you want — your OM is built into this template's layout. Required before you can build.</p>
       <div id="templateDropzone" class="dropzone dropzone-slim" tabindex="0" role="button" aria-label="Drop your template deck or click to browse">
         <strong>Drag your template here</strong>
         or click to browse — the deck whose formatting you want this OM to match
@@ -663,8 +663,8 @@
   }
 
   function updateBuildGate() {
-    // Prompt is optional — files in, OM out. Gate is key + at least one file.
-    var ready = !running && keyPresent && uploadedFiles.length > 0;
+    // Gate is key + a template + at least one deal document. Prompt stays optional.
+    var ready = !running && keyPresent && uploadedFiles.length > 0 && templateFiles.length > 0;
     buildBtn.disabled = !ready;
     verifyBtn.disabled = running;
     // Research is part of the build now — the checkboxes just need to sit

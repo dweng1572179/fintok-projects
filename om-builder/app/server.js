@@ -531,6 +531,11 @@ const server = http.createServer(async (req, res) => {
         phases = [{ prompt: VERIFY_PROMPT }];
       } else {
         const jobDir = path.join(JOBS, id);
+        // The template is mandatory: the OM is always built into a dropped
+        // template's layout. The UI gates on this too; this is the backstop.
+        if (!hasTemplate(jobDir)) {
+          return json(res, 400, { error: "drop a template deck first — your OM is built into its layout" });
+        }
         // Checked research boxes become phases that run BEFORE the build in
         // the same agent pipeline — each writes research/ files the build
         // phase then consumes. A failed research phase aborts the pipeline,
