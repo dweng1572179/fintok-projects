@@ -373,19 +373,18 @@
   }
 
   /* ---- research suite ---- */
-  .address-input {
-    width: 100%;
-    font-family: inherit;
-    font-size: 1.05rem;
-    padding: 0.85rem 1rem;
-    border: 1px solid var(--line);
-    border-radius: 0.6rem;
-    background: #fffdf9;
-    color: var(--ink);
-    margin-bottom: 1rem;
-  }
-  .address-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .dropzone-slim { padding: 1.35rem 1.5rem; font-size: 0.98rem; }
   .research-actions { display: flex; flex-direction: column; gap: 0.85rem; }
+  .research-toggle { cursor: pointer; }
+  .research-toggle:hover { border-color: var(--accent); }
+  .research-check {
+    width: 1.35rem;
+    height: 1.35rem;
+    flex-shrink: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .research-toggle:has(.research-check:checked) { border-color: var(--accent); background: var(--accent-soft); }
   .research-card {
     display: flex;
     align-items: center;
@@ -466,8 +465,9 @@
     }
     textarea, .key-row input { background: #221c16; color: var(--ink); }
     details { background: #241e17; }
-    .address-input, .brief-view { background: #221c16; color: var(--ink); }
+    .brief-view { background: #221c16; color: var(--ink); }
     .research-card { background: #241e17; }
+    .research-toggle:has(.research-check:checked) { background: var(--accent-soft); }
     .brief-tab { background: #2a231c; }
     .tbd-note { background: #3a3115; border-color: #6b5a24; color: #f2e9dc; }
     .download-card { background: #241e17; }
@@ -510,7 +510,18 @@
     </section>
 
     <section class="panel">
-      <h2><span class="step-num">1</span>Drop your deal documents</h2>
+      <h2><span class="step-num">1</span>Drop your template <span style="font-weight:400;color:var(--ink-soft);font-size:1rem;">(optional)</span></h2>
+      <p class="helper">The deck whose look you want — your formatting reference. Skip it and you get a clean default design.</p>
+      <div id="templateDropzone" class="dropzone dropzone-slim" tabindex="0" role="button" aria-label="Drop your template deck or click to browse">
+        <strong>Drag your template here</strong>
+        or click to browse — the deck whose formatting you want this OM to match
+      </div>
+      <input id="templateFileInput" type="file" multiple />
+      <div id="templateChips" class="chips"></div>
+    </section>
+
+    <section class="panel">
+      <h2><span class="step-num">2</span>Drop your deal documents</h2>
       <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Drop your deal documents or click to browse">
         <span class="dropzone-icon" aria-hidden="true">
           <svg width="52" height="40" viewBox="0 0 64 46" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -535,47 +546,38 @@
     </section>
 
     <section class="panel">
-      <h2><span class="step-num">2</span>Let it research the property <span style="font-weight:400;color:var(--ink-soft);font-size:1rem;">(optional)</span></h2>
-      <p class="helper">Missing comps or market data? Give it the address and it researches the web — every figure comes back with its source. Whatever it finds feeds your build automatically.</p>
-      <input id="addressInput" class="address-input" type="text" placeholder="Property address — e.g. 845 S Kenmore Ave, Los Angeles, CA 90005" aria-label="Property address" />
+      <h2><span class="step-num">3</span>Let it research the deal <span style="font-weight:400;color:var(--ink-soft);font-size:1rem;">(optional)</span></h2>
+      <p class="helper">Tick what it should research — it runs during the build, and it finds the property straight from your deal documents. Every figure comes back with its source.</p>
       <div class="research-actions">
-        <div class="research-card">
+        <label class="research-card research-toggle">
+          <input type="checkbox" class="research-check" data-type="property" />
           <div class="research-info">
             <div class="research-name">Property search</div>
             <div class="research-desc">Sale &amp; listing history, unit mix, owner of record, zoning, news mentions.</div>
           </div>
-          <button type="button" class="research-btn secondary" data-type="property" disabled>Run</button>
-        </div>
-        <div class="research-card">
+        </label>
+        <label class="research-card research-toggle">
+          <input type="checkbox" class="research-check" data-type="comps" />
           <div class="research-info">
             <div class="research-name">Comp analysis</div>
             <div class="research-desc">Recent sale and rent comps nearby — $/unit, $/SF, cap rates, distances.</div>
           </div>
-          <button type="button" class="research-btn secondary" data-type="comps" disabled>Run</button>
-        </div>
-        <div class="research-card">
+        </label>
+        <label class="research-card research-toggle">
+          <input type="checkbox" class="research-check" data-type="market" />
           <div class="research-info">
             <div class="research-name">Market research</div>
             <div class="research-desc">Rents, vacancy, demographics, employers, pipeline — plus the last 30 days of local news.</div>
           </div>
-          <button type="button" class="research-btn secondary" data-type="market" disabled>Run</button>
-        </div>
+        </label>
       </div>
-      <div id="researchProgress" class="progress">
-        <div id="researchLines"></div>
-        <details>
-          <summary>Show the technical details</summary>
-          <div id="researchDetails"></div>
-        </details>
-      </div>
-      <div id="researchError" class="error-box"></div>
       <div id="briefTabs" class="brief-tabs"></div>
       <div id="briefView" class="brief-view"></div>
-      <p class="fine-print">Each research run bills your Anthropic key — typically $2&ndash;4 per run — and shows its exact cost in the feed when it finishes.</p>
+      <p class="fine-print">Each ticked item adds roughly $2&ndash;4 and a few minutes to the build, billed to your key — the exact cost shows in the build feed.</p>
     </section>
 
     <section class="panel">
-      <h2><span class="step-num">3</span>Anything it should know? (optional)</h2>
+      <h2><span class="step-num">4</span>Anything it should know? (optional)</h2>
       <p class="helper">Say nothing and you&rsquo;ll get a full OM from your documents. Or steer it: name a price, or say &ldquo;in the style of&rdquo; a deck you dropped in.</p>
       <textarea id="promptInput" rows="5" placeholder="Take the Studio Garden Apartment Covina and make it into the template style of the MM Ontario OM" aria-label="Anything it should know? (optional)"></textarea>
       <button id="buildBtn" disabled>Build my OM</button>
@@ -591,14 +593,14 @@
     </section>
 
     <section class="panel">
-      <h2><span class="step-num">4</span>Download</h2>
+      <h2><span class="step-num">5</span>Download</h2>
       <div id="downloads" class="downloads">
         <p class="empty">Your finished deck will land here the moment the build wraps up.</p>
       </div>
       <button id="verifyBtn" class="secondary" style="display:none;">Double-check it (Verify)</button>
       <p id="verifyNote" class="verify-note">Re-checks every number and the design before you trust it.</p>
       <div id="tbdNote" class="tbd-note">
-        <span>Your deck has [TBD] spots — the tool refuses to invent numbers. Add the missing info to your documents and build again, or let it research the gaps (uses the address in step 2):</span>
+        <span>Your deck has [TBD] spots — the tool refuses to invent numbers. Add the missing info to your documents and build again, or let it research the gaps straight from your deal:</span>
         <button id="tbdResearchBtn" type="button" class="secondary" disabled>Research the missing info</button>
         <button id="rebuildBtn" type="button" style="display:none;">Rebuild with research</button>
       </div>
@@ -639,14 +641,14 @@
   var errorBox = document.getElementById("errorBox");
   var downloads = document.getElementById("downloads");
   var tbdNote = document.getElementById("tbdNote");
-  var addressInput = document.getElementById("addressInput");
-  var researchProgress = document.getElementById("researchProgress");
-  var researchLines = document.getElementById("researchLines");
-  var researchDetails = document.getElementById("researchDetails");
-  var researchError = document.getElementById("researchError");
+  var templateDropzone = document.getElementById("templateDropzone");
+  var templateFileInput = document.getElementById("templateFileInput");
+  var templateChips = document.getElementById("templateChips");
+  var templateFiles = []; // {name, size} — formatting reference, kept apart from deal docs
   var briefTabs = document.getElementById("briefTabs");
   var briefView = document.getElementById("briefView");
-  var researchBtns = Array.prototype.slice.call(document.querySelectorAll(".research-btn"));
+  var researchChecks = Array.prototype.slice.call(document.querySelectorAll(".research-check"));
+  var lastRequestedResearch = []; // types sent with the most recent build
   var briefs = {}; // type -> {brief, findings, usable}
   var shownBrief = null;
   var currentResearchType = null;
@@ -665,14 +667,12 @@
     var ready = !running && keyPresent && uploadedFiles.length > 0;
     buildBtn.disabled = !ready;
     verifyBtn.disabled = running;
-    // Research needs only key + address — a broker can research before
-    // uploading a single document.
-    var researchReady = !running && keyPresent && !!addressInput.value.trim();
-    researchBtns.forEach(function (b) { b.disabled = !researchReady; });
-    tbdResearchBtn.disabled = !researchReady;
+    // Research is part of the build now — the checkboxes just need to sit
+    // still while a run is in flight.
+    researchChecks.forEach(function (c) { c.disabled = running; });
+    tbdResearchBtn.disabled = running || !keyPresent;
     rebuildBtn.disabled = running;
   }
-  addressInput.addEventListener("input", updateBuildGate);
 
   function collapseKeyPanel() {
     if (keyPanel.style.display === "none") return;
@@ -763,20 +763,20 @@
     return jobPromise;
   }
 
-  function uploadFile(file) {
+  function uploadFile(file, isTemplate) {
     return ensureJob().then(function (id) {
-      var url = "/api/upload?job=" + encodeURIComponent(id) + "&name=" + encodeURIComponent(file.name);
+      var url = "/api/upload?job=" + encodeURIComponent(id) + "&name=" + encodeURIComponent(file.name) + (isTemplate ? "&template=1" : "");
       return fetch(url, { method: "POST", body: file }).then(function (r) { return r.json(); });
     }).then(function () {
-      uploadedFiles.push({ name: file.name, size: file.size });
+      (isTemplate ? templateFiles : uploadedFiles).push({ name: file.name, size: file.size });
       renderChips();
       updateBuildGate();
     });
   }
 
-  function renderChips() {
-    chips.innerHTML = "";
-    uploadedFiles.forEach(function (f) {
+  function renderChipList(container, files) {
+    container.innerHTML = "";
+    files.forEach(function (f) {
       var chip = document.createElement("div");
       chip.className = "chip";
       chip.textContent = f.name;
@@ -784,36 +784,44 @@
       size.className = "size";
       size.textContent = fmtSize(f.size);
       chip.appendChild(size);
-      chips.appendChild(chip);
+      container.appendChild(chip);
     });
   }
 
-  function handleFiles(fileList) {
+  function renderChips() {
+    renderChipList(chips, uploadedFiles);
+    renderChipList(templateChips, templateFiles);
+  }
+
+  function handleFiles(fileList, isTemplate) {
     var files = Array.prototype.slice.call(fileList);
-    files.forEach(function (f) { uploadFile(f); });
+    files.forEach(function (f) { uploadFile(f, isTemplate); });
   }
 
-  dropzone.addEventListener("click", function () { fileInput.click(); });
-  dropzone.addEventListener("keydown", function (e) {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
-  });
-  fileInput.addEventListener("change", function () { handleFiles(fileInput.files); fileInput.value = ""; });
-
-  ["dragenter", "dragover"].forEach(function (evt) {
-    dropzone.addEventListener(evt, function (e) {
-      e.preventDefault();
-      dropzone.classList.add("drag");
+  function wireDropzone(zone, input, isTemplate) {
+    zone.addEventListener("click", function () { input.click(); });
+    zone.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
     });
-  });
-  ["dragleave", "drop"].forEach(function (evt) {
-    dropzone.addEventListener(evt, function (e) {
-      e.preventDefault();
-      dropzone.classList.remove("drag");
+    input.addEventListener("change", function () { handleFiles(input.files, isTemplate); input.value = ""; });
+    ["dragenter", "dragover"].forEach(function (evt) {
+      zone.addEventListener(evt, function (e) {
+        e.preventDefault();
+        zone.classList.add("drag");
+      });
     });
-  });
-  dropzone.addEventListener("drop", function (e) {
-    if (e.dataTransfer && e.dataTransfer.files) handleFiles(e.dataTransfer.files);
-  });
+    ["dragleave", "drop"].forEach(function (evt) {
+      zone.addEventListener(evt, function (e) {
+        e.preventDefault();
+        zone.classList.remove("drag");
+      });
+    });
+    zone.addEventListener("drop", function (e) {
+      if (e.dataTransfer && e.dataTransfer.files) handleFiles(e.dataTransfer.files, isTemplate);
+    });
+  }
+  wireDropzone(dropzone, fileInput, false);
+  wireDropzone(templateDropzone, templateFileInput, true);
 
   function resetProgressUI() {
     progressLines.innerHTML = "";
@@ -963,6 +971,11 @@
     if (running || !jobId) return;
     resetProgressUI();
     running = true; // stays true until the SSE feed says done/error
+    // The ticked research boxes ride along on the build request — the server
+    // runs each as a phase before the deck is built.
+    lastRequestedResearch = researchChecks
+      .filter(function (c) { return c.checked; })
+      .map(function (c) { return c.getAttribute("data-type"); });
     updateBuildGate();
     fetch("/api/build", {
       method: "POST",
@@ -970,6 +983,7 @@
       body: JSON.stringify({
         job: jobId,
         prompt: promptInput.value.trim(),
+        research: lastRequestedResearch,
       }),
     }).then(function (r) {
       if (!r.ok) throw new Error("build request failed");
@@ -978,7 +992,10 @@
         details: detailLines,
         errorBox: errorBox,
         doneText: "All set — your deck is ready below.",
-        onDone: fetchOutputs,
+        onDone: function () {
+          fetchOutputs();
+          lastRequestedResearch.forEach(function (t) { fetchBrief(t); });
+        },
       });
     }).catch(function () {
       // request never started an agent — unlock so the buyer can retry
@@ -1020,28 +1037,19 @@
   });
 
   // ---- research suite ----
-  function resetResearchUI() {
-    researchLines.innerHTML = "";
-    researchDetails.innerHTML = "";
-    researchError.classList.remove("show");
-    researchError.textContent = "";
-    researchProgress.classList.add("show");
-  }
-
+  // Pre-build research now runs inside the build (see startBuild). This
+  // standalone runner remains only for the post-build TBD hunt; its progress
+  // streams into the build panel's feed.
   function startResearch(type) {
-    if (running) return;
-    var address = addressInput.value.trim();
-    if (!address) return;
-    resetResearchUI();
+    if (running || !jobId) return;
+    resetProgressUI();
     running = true;
     currentResearchType = type;
     updateBuildGate();
-    ensureJob().then(function (id) {
-      return fetch("/api/research", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ job: id, type: type, address: address }),
-      });
+    fetch("/api/research", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ job: jobId, type: type }),
     }).then(function (r) {
       if (!r.ok) {
         return r.json().then(function (d) {
@@ -1049,10 +1057,10 @@
         });
       }
       attachProgress({
-        lines: researchLines,
-        details: researchDetails,
-        errorBox: researchError,
-        doneText: "Research finished — the brief is below.",
+        lines: progressLines,
+        details: detailLines,
+        errorBox: errorBox,
+        doneText: "Research finished — the brief is in step 3.",
         onDone: function () {
           fetchBrief(currentResearchType);
           if (currentResearchType === "tbd") rebuildBtn.style.display = "inline-block";
@@ -1061,13 +1069,10 @@
     }).catch(function (err) {
       running = false;
       updateBuildGate();
-      researchError.textContent = (err && err.message) || "Couldn't start the research. Please try again.";
-      researchError.classList.add("show");
+      errorBox.textContent = (err && err.message) || "Couldn't start the research. Please try again.";
+      errorBox.classList.add("show");
     });
   }
-  researchBtns.forEach(function (b) {
-    b.addEventListener("click", function () { startResearch(b.getAttribute("data-type")); });
-  });
   tbdResearchBtn.addEventListener("click", function () {
     if (tbdResearchBtn.disabled) return;
     startResearch("tbd");

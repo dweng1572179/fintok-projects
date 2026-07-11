@@ -56,12 +56,25 @@ const RESEARCH_BRIDGE =
   "each researched figure, its source, and its as-of date. Only replace a [TBD] with a researched figure whose " +
   "confidence is high; otherwise keep the [TBD].";
 
+// Appended when the buyer dropped files into the TEMPLATE zone (they land in
+// the job's template/ subfolder). The kit's existing guardrails handle the
+// branding-stripping rules; this just points the agent at the right folder.
+const TEMPLATE_BRIDGE =
+  "\n\nThe template/ folder contains the TEMPLATE deck — the look and formatting to copy. Analyze it into a " +
+  "reusable template profile first, then build my OM into that layout. Per the rules above, strip the " +
+  "template's branding; every number and all deal branding come from my deal documents in the current folder.";
+
 // The buyer's freeform text, verbatim, followed by the standing guardrails.
 // Blank/missing input falls back to DEFAULT_BUILD_INSTRUCTION — the prompt
 // panel is optional, not required.
-function buildPrompt(userText, withResearch) {
+function buildPrompt(userText, withResearch, withTemplate) {
   const text = String(userText || "").trim();
-  return (text || DEFAULT_BUILD_INSTRUCTION) + BUILD_GUARDRAILS + (withResearch ? RESEARCH_BRIDGE : "");
+  return (
+    (text || DEFAULT_BUILD_INSTRUCTION) +
+    BUILD_GUARDRAILS +
+    (withTemplate ? TEMPLATE_BRIDGE : "") +
+    (withResearch ? RESEARCH_BRIDGE : "")
+  );
 }
 
 // ---- research suite (spec: docs/research-suite-design.md) ----
@@ -78,48 +91,56 @@ function researchContract(type) {
   );
 }
 
+// Every research prompt starts by identifying the subject FROM THE DEAL DOCS —
+// the broker never types an address; the documents are the source of truth.
+const IDENTIFY_SUBJECT =
+  "First, read the deal documents in the current folder and identify the subject property — its street " +
+  "address, name, and asset type. Use that as the subject of your research. If the address genuinely does " +
+  "not appear in the documents, say so plainly in the brief and research what the other identifiers allow. ";
+
 const RESEARCH_TYPES = {
   property: {
     intro: "Researching the property…",
-    prompt: (address) =>
-      `Research the property at ${address} using web search. Find: sale and listing history with dates and ` +
-      "prices, unit mix and building size, year built, owner of record where public, zoning, and any news " +
-      "mentions of the property.",
+    prompt: () =>
+      IDENTIFY_SUBJECT +
+      "Then research the property using web search. Find: sale and listing history with dates and prices, " +
+      "unit mix and building size, year built, owner of record where public, zoning, and any news mentions " +
+      "of the property.",
   },
   comps: {
     intro: "Finding comparable sales and rents…",
-    prompt: (address) =>
-      `Research comparables for the subject property at ${address} using web search: recent comparable sales ` +
-      "and rent comps in the same submarket. For each comp give the address, sale or listing date, price, " +
-      "$/unit, $/SF, cap rate where reported, and approximate distance from the subject. Present the comps as " +
-      "a markdown table in the brief, followed by a short narrative of what they suggest about the subject.",
+    prompt: () =>
+      IDENTIFY_SUBJECT +
+      "Then research comparables for the subject using web search: recent comparable sales and rent comps " +
+      "in the same submarket. For each comp give the address, sale or listing date, price, $/unit, $/SF, " +
+      "cap rate where reported, and approximate distance from the subject. Present the comps as a markdown " +
+      "table in the brief, followed by a short narrative of what they suggest about the subject.",
   },
   market: {
     intro: "Researching the market…",
-    prompt: (address) =>
-      `Research the submarket around ${address} using web search. Cover the fundamentals: asking rents and ` +
-      "rent trends, vacancy, demographics (population and incomes), major employers, and the supply pipeline " +
-      "(projects under construction or proposed). Then add a '## Last 30 days' section covering recent news " +
-      "relevant to this submarket — transactions, openings and closures, policy changes, anything a broker " +
-      "writing an OM should know happened recently.",
+    prompt: () =>
+      IDENTIFY_SUBJECT +
+      "Then research the submarket around the subject using web search. Cover the fundamentals: asking " +
+      "rents and rent trends, vacancy, demographics (population and incomes), major employers, and the " +
+      "supply pipeline (projects under construction or proposed). Then add a '## Last 30 days' section " +
+      "covering recent news relevant to this submarket — transactions, openings and closures, policy " +
+      "changes, anything a broker writing an OM should know happened recently.",
   },
   tbd: {
     intro: "Hunting down the deck's missing numbers…",
-    prompt: (address) =>
-      `The current folder contains a built .pptx offering memorandum for the property at ${address}, plus the ` +
-      "deal documents it was built from. First open the deck (python-pptx is available) and list every [TBD] " +
-      "marker with the slide it sits on and what value it stands in for. Then research JUST those missing " +
-      "items using web search. In the brief, give one section per [TBD] with what you found, or a plain " +
-      "statement that it could not be found.",
+    prompt: () =>
+      "The current folder contains a built .pptx offering memorandum plus the deal documents it was built " +
+      "from. First open the deck (python-pptx is available) and list every [TBD] marker with the slide it " +
+      "sits on and what value it stands in for. Then research JUST those missing items using web search, " +
+      "using the property identified in the deck and documents as the subject. In the brief, give one " +
+      "section per [TBD] with what you found, or a plain statement that it could not be found.",
   },
 };
 
-function researchPrompt(type, address) {
+function researchPrompt(type) {
   const def = Object.prototype.hasOwnProperty.call(RESEARCH_TYPES, type) ? RESEARCH_TYPES[type] : null;
   if (!def) throw new Error(`unknown research type: ${type}`);
-  const addr = String(address || "").trim();
-  if (!addr) throw new Error("address required");
-  return def.prompt(addr) + researchContract(type);
+  return def.prompt() + researchContract(type);
 }
 
 // Pure request gate for POST /api/research — factored out so the 400 paths
@@ -127,9 +148,25 @@ function researchPrompt(type, address) {
 function validateResearchRequest(body) {
   const type = String((body && body.type) || "");
   if (!Object.prototype.hasOwnProperty.call(RESEARCH_TYPES, type)) return { ok: false, error: "unknown research type" };
-  const address = String((body && body.address) || "").trim();
-  if (!address) return { ok: false, error: "enter the property address first" };
-  return { ok: true, type, address };
+  return { ok: true, type };
+}
+
+// The checked research boxes arrive on the build request as an array of type
+// names; anything unknown (or the post-build-only "tbd") is dropped. Pure for
+// tests.
+function sanitizeResearchSelection(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of list) {
+    const t = String(raw);
+    if (t === "tbd") continue;
+    if (!Object.prototype.hasOwnProperty.call(RESEARCH_TYPES, t)) continue;
+    if (seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
 }
 
 // A findings file is only trustworthy if it parses to a JSON array. Anything
@@ -166,6 +203,17 @@ function hasResearchFindings(jobDir) {
       return false;
     }
   });
+}
+
+// The template bridge switches on this: any file in the job's template/
+// subfolder means the buyer dropped a formatting reference into the
+// template zone.
+function hasTemplate(jobDir) {
+  try {
+    return fs.readdirSync(path.join(jobDir, "template")).length > 0;
+  } catch {
+    return false; // no template/ dir — the common case
+  }
 }
 
 // Replaces (or inserts) the ANTHROPIC_API_KEY= line in the bundle-root env
@@ -348,7 +396,7 @@ async function runAgent(jobId, phases) {
 const RESEARCH_MAX_TURNS = 150;
 const RESEARCH_TIMEOUT_MS = 20 * 60 * 1000;
 
-async function runResearch(jobId, type, address) {
+async function runResearch(jobId, type) {
   const jobDir = path.join(JOBS, jobId);
   fs.mkdirSync(path.join(jobDir, "research"), { recursive: true });
   const ac = new AbortController();
@@ -357,7 +405,7 @@ async function runResearch(jobId, type, address) {
   const options = { ...agentOptions(jobDir), maxTurns: RESEARCH_MAX_TURNS, abortController: ac };
   let ok = false;
   try {
-    ok = await runAgent(jobId, [{ intro: def.intro, prompt: researchPrompt(type, address), options }]);
+    ok = await runAgent(jobId, [{ intro: def.intro, prompt: researchPrompt(type), options }]);
   } finally {
     clearTimeout(timer);
     if (!ok) {
@@ -446,7 +494,17 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === "POST" && url.pathname === "/api/upload") {
     const name = safeName(url.searchParams.get("name") || "file");
-    const out = fs.createWriteStream(path.join(JOBS, jobId, name));
+    // ?template=1 = the TEMPLATE drop zone: the file is a formatting
+    // reference, kept in template/ so the build prompt can point at it and
+    // deal-data extraction never confuses it for deal documents.
+    const isTemplate = url.searchParams.get("template") === "1";
+    const dir = isTemplate ? path.join(JOBS, jobId, "template") : path.join(JOBS, jobId);
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+    } catch {
+      return json(res, 500, { error: "upload failed" });
+    }
+    const out = fs.createWriteStream(path.join(dir, name));
     out.on("error", () => {
       if (!res.headersSent) json(res, 500, { error: "upload failed" });
     });
@@ -472,10 +530,32 @@ const server = http.createServer(async (req, res) => {
       if (url.pathname === "/api/verify") {
         phases = [{ prompt: VERIFY_PROMPT }];
       } else {
+        const jobDir = path.join(JOBS, id);
+        // Checked research boxes become phases that run BEFORE the build in
+        // the same agent pipeline — each writes research/ files the build
+        // phase then consumes. A failed research phase aborts the pipeline,
+        // so a build never runs on top of a half-finished research pass.
+        const requested = sanitizeResearchSelection(parsed.research);
+        if (requested.length) {
+          try {
+            fs.mkdirSync(path.join(jobDir, "research"), { recursive: true });
+          } catch {
+            return json(res, 500, { error: "could not prepare the research folder" });
+          }
+        }
+        phases = requested.map((t) => ({
+          intro: RESEARCH_TYPES[t].intro,
+          prompt: researchPrompt(t),
+          options: { ...agentOptions(jobDir), maxTurns: RESEARCH_MAX_TURNS },
+        }));
         // Prompt is optional — buildPrompt() supplies a sane default when
         // the buyer leaves it blank, so no empty-prompt 400 here. The
-        // research bridge rides along only when findings exist on disk.
-        phases = [{ prompt: buildPrompt(prompt, hasResearchFindings(path.join(JOBS, id))) }];
+        // research bridge rides along when research was just requested OR
+        // usable findings already exist; the template bridge when the
+        // template zone has files.
+        phases.push({
+          prompt: buildPrompt(prompt, requested.length > 0 || hasResearchFindings(jobDir), hasTemplate(jobDir)),
+        });
       }
       // Fire-and-forget: the run reports itself over SSE. A rejection here has
       // no handler, and an unhandled rejection takes the whole server down.
@@ -503,7 +583,7 @@ const server = http.createServer(async (req, res) => {
       // Same fire-and-forget contract as /api/build: mkdirSync in runResearch
       // runs outside its try, so a bad job dir would otherwise reject with no
       // handler and kill the process.
-      runResearch(parsed.job, v.type, v.address).catch((err) =>
+      runResearch(parsed.job, v.type).catch((err) =>
         emit(j, "error", `Couldn't start the research: ${err.message}`)
       );
       json(res, 200, { ok: true });
@@ -592,9 +672,11 @@ module.exports = {
   ensureWorkspaceBoundary,
   researchPrompt,
   validateResearchRequest,
+  sanitizeResearchSelection,
   RESEARCH_TYPES,
   parseFindings,
   hasResearchFindings,
+  hasTemplate,
 };
 
 if (require.main === module) {

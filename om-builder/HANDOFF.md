@@ -29,7 +29,9 @@ A real deal was run through the exact buyer flow: two large broker OMs in (19 MB
 
 ## Research Suite (added 2026-07-11, branch research-suite)
 
-Three research buttons (Property search / Comp analysis / Market research) plus a TBD-fill loop, all wrapper-side — the vendored kit is still byte-identical. Web research runs on the buyer's own key via the Agent SDK's web search; no new API keys, no new dependencies.
+Three research options (Property search / Comp analysis / Market research) plus a TBD-fill loop, all wrapper-side — the vendored kit is still byte-identical. Web research runs on the buyer's own key via the Agent SDK's web search; no new API keys, no new dependencies.
+
+**v2 UX (2026-07-11, Ben's feedback):** no address field — every research prompt identifies the subject property from the deal documents itself. The Run buttons are gone: research is now **checkboxes** whose ticked types ride the build request (`research: ["property", ...]`) and run as pipeline phases before the deck phase (a failed research phase aborts the build). The upload zone split in two: a **template** drop (files land in the job's `template/` subfolder and trigger a template-style bridge in the build prompt) and a **deal documents** drop. `POST /api/research` remains for the post-build TBD hunt only.
 
 - **Contract:** each run writes `research/<type>-brief.md` (sourced brief, `## Sources` section) + `research/<type>-findings.json` (array of `{field, value, unit, source_url, as_of, confidence}`) into the job dir. Types: `property | comps | market | tbd`.
 - **Build integration:** when any `*-findings.json` exists, the build prompt gains a bridge block — deal docs beat research, every researched figure cited on a final "Sources & Data Notes" slide, `[TBD]` only replaced by high-confidence findings. No findings → prompt byte-identical to before.
