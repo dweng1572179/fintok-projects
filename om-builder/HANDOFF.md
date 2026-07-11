@@ -27,6 +27,16 @@ A real deal was run through the exact buyer flow: two large broker OMs in (19 MB
 4. Drop deal docs, optionally type instructions, **Build my OM** (~10–25 min, bills the key), download.
    A tiny sanitized sample deal ships inside at `kit/examples/sample-deal/`.
 
+## Research Suite (added 2026-07-11, branch research-suite)
+
+Three research buttons (Property search / Comp analysis / Market research) plus a TBD-fill loop, all wrapper-side — the vendored kit is still byte-identical. Web research runs on the buyer's own key via the Agent SDK's web search; no new API keys, no new dependencies.
+
+- **Contract:** each run writes `research/<type>-brief.md` (sourced brief, `## Sources` section) + `research/<type>-findings.json` (array of `{field, value, unit, source_url, as_of, confidence}`) into the job dir. Types: `property | comps | market | tbd`.
+- **Build integration:** when any `*-findings.json` exists, the build prompt gains a bridge block — deal docs beat research, every researched figure cited on a final "Sources & Data Notes" slide, `[TBD]` only replaced by high-confidence findings. No findings → prompt byte-identical to before.
+- **Guardrails:** `maxTurns 150`, 20-min abort timer per research run; a failed run deletes only a *malformed* findings file. Real per-run cost (`total_cost_usd` from the SDK result) is shown in the feed.
+- **E2E-proven** (845 S Kenmore Ave, 2026-07-11): 24/30/27 sourced findings across the three runs ($1.20/$1.10/$1.22), 15-slide OM out with Sources & Data Notes slide ($7.85), TBD hunt found APN + zoning + retrofit status at high confidence and honestly left unknowable contact blocks as `[TBD]` ($2.00), rebuild consumed the findings. Conflict rule observed working: research found the old Coldwell listing, deck kept the deal docs' Marcus & Millichap branding.
+- **Docs trail:** `docs/research-suite-design.md` (spec) + `docs/research-suite-plan.md` (plan); 22 unit tests in `app/test/server-helpers.test.js`.
+
 ## Facts you'll want
 
 - **Model:** hardcoded `claude-opus-4-8`. Everything is BYOK — no server, no accounts, no billing infra on our side.
