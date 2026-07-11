@@ -268,17 +268,23 @@ function describeToolUse(name, input) {
   if (name === "Bash" && /extract_pdf_photos/.test(input?.command || "")) return "Pulling property photos from your PDF…";
   if (name === "Write" || name === "Edit") return "Building the deck…";
   if (name === "Read") return "Reading your documents…";
+  if (name === "WebSearch") return `Searching the web: ${String(input?.query || "").slice(0, 80)}…`;
+  if (name === "WebFetch") return "Reading a source page…";
   return null;
 }
 
-// Runs one or more sequential agent phases in the same job dir with the same
-// options. `phases` is an array of { intro?: string, prompt: string }. Build
-// and Verify are each a single phase today; the machinery stays multi-phase
-// (with abort-on-error) so chained flows remain cheap to add.
+// Runs one or more sequential agent phases in the same job dir. `phases` is
+// an array of { intro?: string, prompt: string, options?: object } — options
+// defaults to the sealed agentOptions(jobDir); research passes an override
+// with maxTurns + an abort timer. Returns true when every phase succeeded.
 async function runAgent(jobId, phases) {
   const job = jobs.get(jobId);
   const jobDir = path.join(JOBS, jobId);
   job.running = true;
+  // Each run owns the progress feed: without this, a new EventSource replay
+  // (see /api/progress) would prepend every PREVIOUS run's events to this
+  // run's log.
+  job.events = [];
   let failed = false;
   try {
     const { query } = await import("@anthropic-ai/claude-agent-sdk");
@@ -287,7 +293,7 @@ async function runAgent(jobId, phases) {
       // agentOptions() carries the environment seal: the agent sees only the
       // bundle's skills — no MCP servers or external settings from the
       // buyer's machine.
-      const q = query({ prompt: phase.prompt, options: agentOptions(jobDir) });
+      const q = query({ prompt: phase.prompt, options: phase.options || agentOptions(jobDir) });
       for await (const msg of q) {
         if (msg.type === "assistant") {
           for (const block of msg.message?.content || []) {
@@ -302,6 +308,9 @@ async function runAgent(jobId, phases) {
           if (msg.is_error) {
             emit(job, "error", msg.result || "The build hit an error.");
             failed = true;
+          } else if (typeof msg.total_cost_usd === "number" && msg.total_cost_usd > 0) {
+            // Real cost from the SDK — the only honest number we can show.
+            emit(job, "line", `That run billed about $${msg.total_cost_usd.toFixed(2)} to your key.`);
           }
         }
       }
@@ -310,8 +319,39 @@ async function runAgent(jobId, phases) {
     if (!failed) emit(job, "done", "Done.");
   } catch (err) {
     emit(job, "error", `Something went wrong: ${err.message}`);
+    failed = true;
   } finally {
     job.running = false;
+  }
+  return !failed;
+}
+
+// Research guardrails: generous enough for a real multi-search pass, tight
+// enough to stop a runaway before it burns the buyer's key for an hour.
+const RESEARCH_MAX_TURNS = 150;
+const RESEARCH_TIMEOUT_MS = 20 * 60 * 1000;
+
+async function runResearch(jobId, type, address) {
+  const jobDir = path.join(JOBS, jobId);
+  fs.mkdirSync(path.join(jobDir, "research"), { recursive: true });
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), RESEARCH_TIMEOUT_MS);
+  const def = RESEARCH_TYPES[type];
+  const options = { ...agentOptions(jobDir), maxTurns: RESEARCH_MAX_TURNS, abortController: ac };
+  let ok = false;
+  try {
+    ok = await runAgent(jobId, [{ intro: def.intro, prompt: researchPrompt(type, address), options }]);
+  } finally {
+    clearTimeout(timer);
+    if (!ok) {
+      // A failed/aborted run must not leave a half-written findings file for
+      // a later build to trust. Only a MALFORMED file is deleted — an intact
+      // one is either the completed new run or a previous good run.
+      const f = path.join(jobDir, "research", `${type}-findings.json`);
+      try {
+        if (fs.existsSync(f) && parseFindings(fs.readFileSync(f, "utf8")) === null) fs.rmSync(f);
+      } catch {}
+    }
   }
 }
 
@@ -384,7 +424,7 @@ const server = http.createServer(async (req, res) => {
     jobs.set(id, { events: [], listeners: new Set(), running: false });
     return json(res, 200, { job: id });
   }
-  if (!job && url.pathname.startsWith("/api/") && url.pathname !== "/api/build" && url.pathname !== "/api/verify") {
+  if (!job && url.pathname.startsWith("/api/") && url.pathname !== "/api/build" && url.pathname !== "/api/verify" && url.pathname !== "/api/research") {
     if (url.pathname !== "/api/status") return json(res, 404, { error: "unknown job" });
   }
   if (req.method === "POST" && url.pathname === "/api/upload") {
@@ -416,13 +456,50 @@ const server = http.createServer(async (req, res) => {
         phases = [{ prompt: VERIFY_PROMPT }];
       } else {
         // Prompt is optional — buildPrompt() supplies a sane default when
-        // the buyer leaves it blank, so no empty-prompt 400 here.
-        phases = [{ prompt: buildPrompt(prompt) }];
+        // the buyer leaves it blank, so no empty-prompt 400 here. The
+        // research bridge rides along only when findings exist on disk.
+        phases = [{ prompt: buildPrompt(prompt, hasResearchFindings(path.join(JOBS, id))) }];
       }
       runAgent(id, phases);
       json(res, 200, { ok: true });
     });
     return;
+  }
+  if (req.method === "POST" && url.pathname === "/api/research") {
+    if (!requireJson(req, res)) return;
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      let parsed;
+      try {
+        parsed = JSON.parse(body || "{}");
+      } catch {
+        return json(res, 400, { error: "bad request body" });
+      }
+      const j = jobs.get(parsed.job);
+      if (!j) return json(res, 404, { error: "unknown job" });
+      if (j.running) return json(res, 409, { error: "already running" });
+      const v = validateResearchRequest(parsed);
+      if (!v.ok) return json(res, 400, { error: v.error });
+      runResearch(parsed.job, v.type, v.address);
+      json(res, 200, { ok: true });
+    });
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/research") {
+    if (!job) return json(res, 404, { error: "unknown job" });
+    const t = url.searchParams.get("type") || "";
+    if (!Object.prototype.hasOwnProperty.call(RESEARCH_TYPES, t)) return json(res, 400, { error: "unknown research type" });
+    const dir = path.join(JOBS, jobId, "research");
+    let brief = null;
+    let findings = null;
+    try {
+      brief = fs.readFileSync(path.join(dir, `${t}-brief.md`), "utf8");
+    } catch {}
+    try {
+      findings = parseFindings(fs.readFileSync(path.join(dir, `${t}-findings.json`), "utf8"));
+    } catch {}
+    return json(res, 200, { brief, findings, usable: !!(brief && findings) });
   }
   if (req.method === "GET" && url.pathname === "/api/progress") {
     res.writeHead(200, {
