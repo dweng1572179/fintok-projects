@@ -48,6 +48,9 @@ stage() { # stage <name> <plat>  plat: mac|win
   cp -R "$DL/kit" "$S/OM-Builder/kit"; rm -rf "$S/OM-Builder/kit/.git"
   mkdir -p "$S/OM-Builder/app" && cp -R app/server.js app/public app/package.json app/node_modules "$S/OM-Builder/app/"
   cp "launchers/PUT-YOUR-KEY-HERE.env" README-buyer.html "$S/OM-Builder/"
+  # starter template — builds require a template deck; ship one so a
+  # first-time buyer with no OM of their own is never blocked
+  cp "sample-template/Sample OM Template.pptx" "$S/OM-Builder/"
   # workspace skills = kit skills + anthropic document skills
   mkdir -p "$S/OM-Builder/workspace/.claude/skills"
   cp -R "$DL"/kit/skills/* "$S/OM-Builder/workspace/.claude/skills/"
